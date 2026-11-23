@@ -1,0 +1,67 @@
+PASS: 29 runtime contracts
+  37 node families; six seeded graphs validate
+  MCP input-sensitive result and protocol transcript
+  Required fields and isError business failures
+  Output schema and live connection disable
+  Research graph, typed binding, iteration, exact-scope approval once, receipt-only completion
+  Empty search changes branch and merge source
+  Action-only workflow without returned values or files
+  Parallel join, bounded loop, structured return
+  Loop cap explicitly recorded
+  Only explicit artifact node creates a downloadable file
+  Published subworkflow child Run and input mapping
+  Single node test resolves explicit mock upstream context
+  Run-from-node does not replay preceding external writes
+  Namespaced connection instances share mock adapters without identity collision
+  Approval wait token and disabled-during-approval recheck
+  Rejected write has no receipt or false completion
+  Unproduced and null are distinct
+  Run graph snapshot is independent of later draft changes
+  Retries have separate attempts and error edge drives fallback
+  Nested iteration keeps input order and failed item positions
+  Nested loop emits distinct round executions and carries state
+  Tool schema snapshot and valid trace context metadata
+  Known reference type mismatch blocks graph validation
+  Configured tool timeout affects execution
+  Reload preserves receipts and never replays interrupted work
+  Conditional no-op success has zero effects, returned values, files; unused output refs are ignored
+  Unavailable pinned tool version fails explicitly
+  Legacy flow migration preserves both editable draft and published snapshot
+  Explicit partial parallel join retains healthy results and failed-source markers
+PASS 228 workflow/37-node inspector render cases, all actions/forms/label targets, unique DOM ids.
+PASS graph draft copy/save/undo.
+PASS installed flow template binding and actual graph execution.
+PASS: capability binding invalidates actual Agent editor cache without modifying published configuration.
+PASS: 13 capability route/tab variants; all rendered actions/forms registered; 78659 chars rendered.
+PASS: shared debug execution, raw transcript/requestId, Agent draft binding without changing published snapshot.
+PASS: cloned connection tool dispatch, unauthenticated reference handling, live disable enforcement, plugin import/uninstall/reinstall.
+NOTE: Node VM behavior checks, not browser/visual/focus verification.
+PASS: 20 integrated behavior groups; 78 render variants
+  All primary routes, Agent six tabs, MCP/plugin detail variants and legacy Run tabs render with registered handlers
+  Standalone Agent uses shared MCP executor and actual goal-sensitive tool args/results
+  Agent write approval produces one destination receipt and zero implicit files
+  Agent plugin upsert conforms to concrete table/key/values schema
+  Planning produces a reviewable plan without invoking tools
+  Disabled Agent tool mode blocks calls
+  Agent fixture failure retains unified tool error, no false completion
+  Agent published Workflow binding creates a linked child Run with typed input
+  Resource and parameterized Prompt bindings use shared child execution
+  Session settings freeze at turn start despite edits during async execution
+  Namespaced MCP instance preserves actual tool identity and input-sensitive adapter behavior
+  Explicit approved plan snapshot is not overwritten by current session bindings
+  Agent Workflow binding resolves the pinned published version
+  Agent configured path boundary rejects traversal before invoking tools
+  Workflow Agent node delegates the same MCP/plugin pipeline and avoids duplicate model billing
+  Six graph examples integrate with all five result/trace/snapshot/event/usage tabs
+  Trace single-node retest preserves resolved node args, not workflow input shape
+  Human input UI parses integer, object and array values before shared approval validation
+  Final answer budget includes tool-result input tokens and refuses over-budget completion
+  User-derived titles remain escaped
+NOTE: Node VM only. Browser rendering, pointer/focus/viewport verification is not claimed.
+PASS: all offline runtime, workflow, capability and cross-module contracts.
+PASS: JavaScript syntax for every application module.
+PASS: All CSS custom properties resolve to shared or component-owned tokens.
+PASS: CSS delimiter integrity (not a browser CSS parser).
+PASS: No native product dialog calls or uncontrolled eval.
+PASS: 78 rendered pages have unique IDs, label targets, named controls and app-owned forms.
+NOTE: These checks do not verify browser layout, pointer behavior or focus.

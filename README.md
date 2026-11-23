@@ -7,7 +7,7 @@
 
 PeachAgent 计划提供从 Agent 与工作流设计，到执行、知识检索、质量评测、资源共享和应用部署的完整开发平台。每个个人用户是独立租户，可使用全部产品功能，并自行配置模型和外部服务凭证。
 
-**当前状态：v0.2 规划与架构文档阶段。** 本仓库目前交付需求、技术蓝图、可编辑图示和 AI 开发流程模板，尚未实现平台应用，也没有可运行的 Docker Compose 安装包。下文描述的是七阶段交付目标，不是已经上线的功能。
+**当前状态：v0.2 规划、架构文档与交互原型阶段。** 本仓库目前交付需求、技术蓝图、可编辑图示、AI 开发流程模板及 [HTML/CSS/JS 交互原型](prototype/README.md)。原型使用本地模拟调用；正式平台应用尚未实现，也没有可运行的 Docker Compose 安装包。下文描述的是七阶段交付目标，不是已经上线的功能。
 
 <!-- doc-section:capabilities -->
 ## 四个产品域
@@ -53,6 +53,7 @@ PeachAgent 计划提供从 Agent 与工作流设计，到执行、知识检索�
 
 | 想了解什么 | 阅读入口 |
 |---|---|
+| 直接体验界面、工作流、MCP 调试和 Agent 调用 | [交互原型与打开方式](prototype/README.md) |
 | 为什么做、面向谁、哪些能力必须交付 | [项目背景与范围](requirements/01-product-background-and-scope.md) / [需求目录](requirements/README.md) |
 | 产品域、资源关系、页面和用户完整旅程 | [产品架构](requirements/06-product-architecture.md) / [能力矩阵](requirements/07-capability-matrix.md) |
 | 插件开发与公共资源审核 | [插件需求专题](requirements/topics/01-plugin-system.md) / [公共仓库需求专题](requirements/topics/02-public-repositories.md) |
@@ -69,6 +70,7 @@ PeachAgent 计划提供从 Agent 与工作流设计，到执行、知识检索�
 
 | 路径 | 内容 |
 |---|---|
+| [prototype/](prototype/README.md) | 离线 HTML 入口、完整 HTML/CSS/JS 源码、原型规划、运行契约与验证说明 |
 | [requirements/](requirements/README.md) | 背景、产品蓝图、能力矩阵、七阶段详细需求、插件/公共仓库专题、验收与决策 |
 | [technical/](technical/README.md) | 总架构与五份专题技术设计；推荐实现方案和后续验证边界 |
 | [image/](image/README.md) | 产品、路线图、开发流程、架构、插件生命周期、审核和部署图；SVG 与可编辑 DOT 同步保存 |

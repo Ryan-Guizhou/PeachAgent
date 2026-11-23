@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#176B62">
+  <meta name="description" content="OTRYX Studio — 从想法到交付的个人 AI 工作室，高保真交互原型。">
+  <title>工作台 · OTRYX Studio</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%23176B62'/%3E%3Cpath d='M20 20h15a12 12 0 0 1 0 24H20V20Zm24 0v24' fill='none' stroke='white' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="builder.css">
+  <link rel="stylesheet" href="ecosystem.css">
+  <link rel="stylesheet" href="governance.css">
+  <link rel="stylesheet" href="capability-ui.css">
+  <link rel="stylesheet" href="agent-studio.css">
+  <link rel="stylesheet" href="trace.css">
+</head>
+<body>
+  <a class="skip-link" href="#page-content">跳转到主要内容</a>
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar" aria-label="主导航"></aside>
+    <button class="sidebar-scrim" data-action="toggle-sidebar" aria-label="关闭导航" type="button"></button>
+    <div class="main-shell">
+      <header class="topbar" id="topbar"></header>
+      <main id="page-content" tabindex="-1"></main>
+      <footer class="app-footer"><span><i class="tiny-dot"></i> 本地演示已就绪</span><span>OTRYX Studio <span class="footer-sep">/</span> 让每个想法都有下一步</span><button type="button" data-action="help">交互指南</button></footer>
+    </div>
+  </div>
+  <dialog id="app-dialog" aria-labelledby="dialog-title"></dialog>
+  <div id="toast-stack" class="toast-stack" role="status" aria-live="polite" aria-atomic="false"></div>
+  <noscript><p style="padding:30px;margin:30px;background:white">请启用 JavaScript，以体验 OTRYX Studio 交互原型。</p></noscript>
+  <script src="core.js"></script>
+  <script src="runtime.js"></script>
+  <script src="workspace.js"></script>
+  <script src="builder.js"></script>
+  <script src="ecosystem.js"></script>
+  <script src="governance.js"></script>
+  <script src="capability-ui.js"></script>
+  <script src="trace.js"></script>
+  <script src="agent-studio.js"></script>
+  <script>window.addEventListener('DOMContentLoaded', function () { Studio.init(); });</script>
+</body>
+</html>
