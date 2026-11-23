@@ -1,0 +1,34 @@
+digraph ProductCapabilities {
+  graph [rankdir=TB, bgcolor="#FFFFFF", pad=0.35, nodesep=0.38, ranksep=0.48,
+    fontname="Noto Sans CJK SC", fontsize=21, fontcolor="#182B41",
+    label="PeachAgent · 产品能力关系", labelloc=t, labeljust=l];
+  node [shape=box, style="rounded,filled", fontname="Noto Sans CJK SC",
+    fontsize=14, color="#CBD5E1", fillcolor="#F5F7FB", fontcolor="#182B41",
+    margin="0.22,0.16", penwidth=1.1];
+  edge [color="#64748B", arrowsize=0.65, fontname="Noto Sans CJK SC",
+    fontsize=11, fontcolor="#475569", penwidth=1.2];
+  project [label="项目范围\n成员权限 · 资源版本 · 任务预算", fillcolor="#182B41", fontcolor="#FFFFFF", color="#182B41"];
+  workflow [label="可视化工作流\n拖拽 · 条件 · 变量 · 调试", fillcolor="#FFF0E7", color="#F2B38C"];
+  agent [label="Agent 与 Prompt\n目标 · 模式 · 有限多步行动", fillcolor="#FFF0E7", color="#F2B38C"];
+  tools [label="工具与 MCP\n发现 · 授权 · 使用"];
+  skills [label="Skill 与项目规则\n按需读取 · 来源与范围"];
+  knowledge [label="知识库与 RAG\n资料 · 检索 · 证据"];
+  run [label="运行与上下文\n进展 · 压缩 · 结果 · 引用 · 用量", fillcolor="#EAF2F8", color="#9BB9D1"];
+  quality [label="质量中心\n固定样本 · 逐题评价 · 回归与费用", fillcolor="#EAF5EF", color="#96BCA6"];
+  improve [label="用户选择改进\n比较 Prompt、检索与应用版本", fillcolor="#EAF5EF", color="#96BCA6"];
+  { rank=same; workflow; agent; }
+  { rank=same; tools; skills; knowledge; }
+  project -> workflow;
+  project -> agent;
+  workflow -> tools;
+  agent -> tools;
+  agent -> skills;
+  agent -> knowledge;
+  workflow -> knowledge;
+  tools -> run;
+  skills -> run;
+  knowledge -> run;
+  run -> quality [label="真实结果与证据"];
+  quality -> improve [label="显示改进、回归与取舍"];
+  improve -> agent [label="采用新版本", constraint=false, color="#6D997D"];
+}
