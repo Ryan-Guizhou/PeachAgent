@@ -1,0 +1,19 @@
+{
+  "profile": "product-admin",
+  "sourceRoots": ["."],
+  "locale": "zh-CN",
+  "canonicalMap": "UX-CONTRACT.md",
+  "requiredCapabilities": ["Select/Listbox", "Form", "Scrollbar", "Toast", "CRUD"],
+  "ownership": { "Select/Listbox": "native" },
+  "requiredCommands": ["syntax", "integration", "build"],
+  "commands": {
+    "syntax": "python qa/verify-sources.py",
+    "integration": "node qa/integration.cjs",
+    "build": "python build.py"
+  },
+  "evidence": {
+    "crudFullFlow": "qa/expanded-contract.cjs",
+    "failurePaths": "qa/runtime-contract.cjs",
+    "browserLimitations": "qa/verification.md"
+  }
+}

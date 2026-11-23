@@ -1,0 +1,3 @@
+src/qa/.generated/
+__pycache__/
+*.py[cod]

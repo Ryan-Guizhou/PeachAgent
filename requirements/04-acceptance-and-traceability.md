@@ -10,6 +10,8 @@
 
 任务包是拆分建议，不是实际 GitHub Issue。一个开发 Issue 可以同时覆盖某个阶段和相关专题的验收项；先按 [需求拆分模板](../ci/requirement-decomposition-template.md) 检查已有 Issue，避免为同一工作重复建任务。一个需求跨多个 Issue 时指定整体验收归属，只更新本次实际有证据的验收项。
 
+交互原型入库由 [Issue #6](https://github.com/Ryan-Guizhou/PeachAgent/issues/6) 单独追踪，入口为 [prototype/](../prototype/README.md)，检查依据见 [原型验证记录](../prototype/src/qa/verification.md)。它验证前端交互与本地运行语义，包括成功结束时可以没有返回值或文件；外部模型、MCP 和插件调用仍为模拟。原型交付不计作下列生产需求或阶段验收完成，具体 PR 与合并提交在对应 Issue 和总规划中记录。
+
 ## 2. 用户要求与覆盖位置
 
 | 已明确要求 | 主要位置 | 完成依据 |

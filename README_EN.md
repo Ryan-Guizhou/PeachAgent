@@ -7,7 +7,7 @@
 
 PeachAgent is planned as a complete platform for designing agents and workflows, executing tasks, retrieving knowledge, evaluating quality, sharing resources, and deploying applications. Each individual user is an isolated tenant with access to all product features and supplies their own model and external-service credentials.
 
-**Current status: v0.2 planning and architecture documentation.** This repository currently delivers requirements, technical blueprints, editable diagrams, and AI development-process templates. The platform application and a runnable Docker Compose installation package have not been implemented. The capabilities below are targets for seven delivery phases, not live features.
+**Current status: v0.2 planning, architecture documentation, and an interactive prototype.** This repository currently delivers requirements, technical blueprints, editable diagrams, AI development-process templates, and an [HTML/CSS/JS prototype](prototype/README.md). External calls in the prototype use local mock adapters. The production platform and a runnable Docker Compose installation package have not been implemented. The capabilities below are targets for seven delivery phases, not live features.
 
 <!-- doc-section:capabilities -->
 ## Four product domains
@@ -53,6 +53,7 @@ See the [full roadmap](requirements/02-roadmap.md) for dependencies and exit cri
 
 | Question | Reading entry |
 |---|---|
+| How can I try workflows, MCP debugging, and Agent interactions? | [Interactive prototype and opening instructions](prototype/README.md) |
 | Why this project, for whom, and what must be delivered? | [Background and scope](requirements/01-product-background-and-scope.md) / [requirements index](requirements/README.md) |
 | How do domains, resources, pages and user journeys connect? | [Product architecture](requirements/06-product-architecture.md) / [capability matrix](requirements/07-capability-matrix.md) |
 | How do plugin authoring and public reviews work? | [Plugin requirements](requirements/topics/01-plugin-system.md) / [public repository requirements](requirements/topics/02-public-repositories.md) |
@@ -69,6 +70,7 @@ See the [full roadmap](requirements/02-roadmap.md) for dependencies and exit cri
 
 | Path | Contents |
 |---|---|
+| [prototype/](prototype/README.md) | Offline HTML entry, complete HTML/CSS/JS sources, prototype plan, runtime contract, and verification notes |
 | [requirements/](requirements/README.md) | Background, product blueprint, capability matrix, seven detailed phases, plugin/public-repository topics, acceptance and decisions |
 | [technical/](technical/README.md) | Overall architecture and five technical topics, recommended implementation choices and validation boundaries |
 | [image/](image/README.md) | Product, roadmap, development flow, architecture, plugin lifecycle, review and deployment diagrams; SVG with editable DOT sources |

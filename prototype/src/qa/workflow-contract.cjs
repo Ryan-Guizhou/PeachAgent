@@ -1,0 +1,17 @@
+/* Workflow UI contracts. Node VM checks are not browser or visual verification. */
+'use strict';
+const fs=require('fs'),vm=require('vm'),assert=require('assert'),path=require('path');
+const base=path.resolve(__dirname,'..');
+const nodes=new Map();const element=()=>({innerHTML:'',children:[],style:{},dataset:{},classList:{add(){},remove(){},toggle(){}},setAttribute(){},addEventListener(){},removeEventListener(){},querySelector(){return null;},querySelectorAll(){return []},focus(){}});
+const document={getElementById(id){if(!nodes.has(id))nodes.set(id,element());return nodes.get(id)},querySelectorAll(){return[]},addEventListener(){},activeElement:null};
+const context={window:{addEventListener(){},removeEventListener(){}},document,location:{hash:'#home'},localStorage:{getItem(){return null},setItem(){}},console,setTimeout,clearTimeout,TextEncoder,URL,URLSearchParams,Blob,Date,Map,Set,Object,Array,JSON,Promise,Number,String,Boolean,Math,Error,Intl,encodeURIComponent,queueMicrotask,CSS:{escape:x=>x}};vm.createContext(context);
+for(const file of ['core.js','runtime.js','builder.js'])vm.runInContext(fs.readFileSync(path.join(base,file),'utf8'),context,{filename:file});
+const S=context.window.Studio,R=S.Runtime;S.render=()=>{};S.toast=()=>{};S.closeModal=()=>{};
+let count=0;const verify=html=>{assert(html.length>500);for(const m of html.matchAll(/data-action="([^"]+)"/g))assert(S.actions[m[1]],m[1]);for(const m of html.matchAll(/data-form="([^"]+)"/g))assert(S.forms[m[1]],m[1]);const ids=[...html.matchAll(/\sid="([^"]+)"/g)].map(m=>m[1]);assert.equal(new Set(ids).size,ids.length,'duplicate DOM id');for(const m of html.matchAll(/\sfor="([^"]+)"/g))assert(ids.includes(m[1]),'missing label target '+m[1]);};
+S.route='workflows';S.params={};verify(S.pages.workflows.render());
+for(const flow of R.flows){S.route='workflow';S.params={id:flow.id};verify(S.pages.workflow.render());count++;}
+const flow=R.flows[0];S.params={id:flow.id};
+for(const meta of R.catalog){const node=R.newNode(meta.type);flow.nodes.push(node);S.Workflow.invalidateDraft(flow.id);S.actions['builder-select-node']({dataset:{id:node.id}});for(const tab of ['basic','inputs','config','outputs','policy','debug']){S.actions['builder-inspector-tab']({dataset:{id:tab}});verify(S.pages.workflow.render());count++;}flow.nodes.pop();}
+console.log('PASS '+count+' workflow/37-node inspector render cases, all actions/forms/label targets, unique DOM ids.');
+S.Workflow.invalidateDraft(flow.id);S.actions['builder-select-node']({dataset:{id:flow.nodes[0].id}});let before=flow.nodes.length;S.actions['builder-copy-node']();S.actions['builder-save-flow']();assert.equal(flow.nodes.length,before+1);S.actions['builder-undo']();S.actions['builder-save-flow']();assert.equal(flow.nodes.length,before);console.log('PASS graph draft copy/save/undo.');
+const resource={id:'test-resource',name:'Installed flow',content:'Task: {{input.topic}}'};const installedId=S.installWorkflow(resource);assert.equal(installedId,S.installWorkflow(resource));const installed=R.flows.find(f=>f.id===installedId);assert(R.validate(installed).valid);const run=R.runWorkflow(installed,{inputs:{topic:'mapped'},speed:0});R.waitForRun(run).then(()=>{assert.equal(run.status,'done',run.error);assert.equal(run.outcome.returnValue.result,'Task: mapped');console.log('PASS installed flow template binding and actual graph execution.');}).catch(error=>{console.error(error);process.exitCode=1;});
