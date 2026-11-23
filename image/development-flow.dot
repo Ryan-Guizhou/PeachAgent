@@ -1,35 +1,27 @@
-digraph DevelopmentFlow {
-  graph [rankdir=TB, bgcolor="#FFFFFF", pad=0.35, nodesep=0.4, ranksep=0.38,
-    fontname="Noto Sans CJK SC", fontsize=21, fontcolor="#182B41",
-    label="PeachAgent · 开发与阶段核对", labelloc=t, labeljust=l];
-  node [shape=box, style="rounded,filled", fontname="Noto Sans CJK SC",
-    fontsize=13, color="#CBD5E1", fillcolor="#F5F7FB", fontcolor="#182B41",
-    margin="0.19,0.12", penwidth=1.1];
-  edge [color="#64748B", arrowsize=0.6, penwidth=1.1, fontname="Noto Sans CJK SC",
-    fontsize=11, fontcolor="#475569"];
-  scope [label="确认本期需求\n范围与验收依据明确", fillcolor="#182B41", fontcolor="#FFFFFF", color="#182B41"];
-  issue [label="拆分开发 Issue\n关联总规划、需求编号与依赖"];
-  work [label="按单个 Issue 开发\n一条工作分支 · 一份交付 PR"];
-  kind [label="变更包含代码？", shape=diamond, style=filled, fillcolor="#FFF0E7", color="#F2B38C"];
-  code [label="代码检查\n无明显错误 · 编译/构建通过\n核对功能与异常场景"];
-  docs [label="文档检查\n内容 · 链接 · 图示 · 需求映射\n编译：不适用"];
-  pr [label="提交并审查 PR\n真实验证证据 · Closes 子 Issue\n总规划仅 Refs"];
-  pass [label="满足合并要求？", shape=diamond, style=filled, fillcolor="#FFF0E7", color="#F2B38C"];
-  merge [label="合并 main 并核对\n确认合并结果与关联任务"];
-  review [label="每期逐项核对\n需求 · Issue · PR · 验收证据"];
-  complete [label="本期范围全部通过？", shape=diamond, style=filled, fillcolor="#EAF5EF", color="#96BCA6"];
-  gap [label="记录遗漏与未完成项\n补齐开发或形成明确范围调整"];
-  done [label="记录阶段完成结论\n更新总规划与追踪表", fillcolor="#EAF5EF", color="#96BCA6"];
-  scope -> issue -> work -> kind;
-  kind -> code [label="是"];
-  kind -> docs [label="否"];
-  code -> pr;
-  docs -> pr;
-  pr -> pass;
-  pass -> work [label="否：修正", constraint=false, color="#C48158"];
-  pass -> merge [label="是"];
-  merge -> review -> complete;
-  complete -> gap [label="否"];
-  complete -> done [label="是"];
-  gap -> issue [label="回填总规划并继续", constraint=false, color="#C48158"];
+digraph PeachAgent {
+  graph [rankdir=TB, bgcolor="#FFFFFF", pad=0.35, nodesep=0.42, ranksep=0.55,
+    fontname="Noto Sans CJK SC", fontsize=22, fontcolor="#172D45", labelloc=t, labeljust=l];
+  node [shape=box, style="rounded,filled", fontname="Noto Sans CJK SC", fontsize=14,
+    color="#C8D4E2", fillcolor="#F5F8FC", fontcolor="#172D45", margin="0.22,0.16", penwidth=1.15];
+  edge [color="#6A7D93", arrowsize=0.7, fontname="Noto Sans CJK SC", fontsize=11,
+    fontcolor="#50657E", penwidth=1.25];
+  graph [label="PeachAgent · AI 按 ci 模板执行 · 文档流程，非自动流水线"];
+
+  baseline [label="读取已确认需求与技术蓝图\n同时读取总 Issue、现有任务、PR 与 main", fillcolor="#172D45", fontcolor="white", color="#172D45"];
+  split [label="按模板差量拆分\n需求/验收编号 · 依赖 · 范围 · 查重"];
+  issue [label="开发 Issue\n围绕一个可验收结果建立分支", fillcolor="#EAF2FD", color="#91B3D7"];
+  dev [label="开发与对应 PR\n关联 Issue · 说明变化与真实证据", fillcolor="#EAF2FD", color="#91B3D7"];
+  gate [shape=diamond, label="适用构建与\n必要验证通过？", fillcolor="#FFF0E4", color="#E8AE7F"];
+  merge [label="合并 main\n记录提交与关闭对应 Issue", fillcolor="#EAF6EF", color="#92BEA5"];
+  phase [shape=diamond, label="本期全部需求\n核对完成？", fillcolor="#FFF0E4", color="#E8AE7F"];
+  summary [label="更新总规划 Issue\n保留未完成项与阶段真实结论"];
+  release [label="第 7 阶段上线核对\n真实部署 / 挂载 / 恢复 / 全功能联验", fillcolor="#172D45", fontcolor="white", color="#172D45"];
+  baseline -> split -> issue -> dev -> gate;
+  gate -> dev [label="未通过：修复", constraint=false, color="#BC6F55"];
+  gate -> merge [label="通过"];
+  merge -> phase;
+  phase -> split [label="有缺口：回到对应任务", constraint=false, color="#BC6F55"];
+  phase -> summary [label="完整证据"];
+  summary -> release [label="七期收口"];
+
 }

@@ -1,95 +1,101 @@
 # PeachAgent
 
-[简体中文](README.md) · [English](README_EN.md)
+[简体中文](README.md) | [English](README_EN.md)
 
 <!-- doc-section:overview -->
 ## 面向完整任务的 AI 智能体开发平台
 
-PeachAgent 计划将可视化工作流、Agent、MCP、Skill、项目规则、上下文管理、知识检索、质量评测、Prompt 优化和成本控制放在同一个项目中，让应用能够逐步构建、运行、检查和改进。
+PeachAgent 计划提供从 Agent 与工作流设计，到执行、知识检索、质量评测、资源共享和应用部署的完整开发平台。每个个人用户是独立租户，可使用全部产品功能，并自行配置模型和外部服务凭证。
 
-**当前状态：需求规划阶段。** 仓库已提供 v0.1 需求草案、路线图、开发流程和文档图示，尚未实现产品功能。需求需要项目负责人确认，技术方案随后确定。
+**当前状态：v0.2 规划与架构文档阶段。** 本仓库目前交付需求、技术蓝图、可编辑图示和 AI 开发流程模板，尚未实现平台应用，也没有可运行的 Docker Compose 安装包。下文描述的是七阶段交付目标，不是已经上线的功能。
 
 <!-- doc-section:capabilities -->
-## 计划提供的能力
+## 四个产品域
 
-| 能力 | 用户可以完成的事情 |
+![PeachAgent 四域产品能力](image/product-capabilities.svg)
+
+| 产品域 | 规划能力 |
 |---|---|
-| 项目与模型 | 管理项目、配置可用模型、开展对话并查看运行历史 |
-| 可视化工作流 | 拖拽节点、连接步骤、配置条件与数据传递、运行调试 |
-| Agent 与 MCP | 在明确授权和任务限制内选择工具并完成多步任务 |
-| Skill 与项目规则 | 读取 AGENTS.md 等确认支持的规则，按需加载 Skill 正文和参考资料 |
-| 上下文与记忆 | 查看容量与采用的信息，压缩历史并保留目标、约束、待办和证据 |
-| 知识库与 RAG | 维护资料、比较检索结果、回答时提供可核验引用 |
-| 质量与 Prompt | 通过固定样本比较版本、分析失败、评测优化候选并人工选择 |
-| 成本与预算 | 从首次付费调用开始记录用量、限制任务，分析每个成功任务的成本 |
+| **Agent Studio** | 工作流节点拖拽、Agent 设计、Prompt、MCP、Skill、项目规则、知识库、插件开发与调试 |
+| **Agent Runtime** | 工作流和 Agent Loop、工具与受控代码执行、上下文预算/压缩、记忆、人工介入、长任务恢复与多 Agent |
+| **Agent Quality** | RAG 召回与证据评测、任务质量、Skill/压缩/插件评测、Prompt 优化、版本比较、回归和人工复核 |
+| **Agent Operations** | 个人租户、Sa-Token 权限、BYOK 凭证、Token 面板与预算、应用发布、公共审核仓库和部署运维 |
 
-以上为规划能力，详细范围与完成标准见 [需求文档](requirements/README.md)。
+### 本版明确包含的能力
 
-![PeachAgent 产品能力关系](image/product-capabilities.svg)
+- **可扩展插件**：配置与真实代码能力、统一表单和自定义前端都支持；提供作者开发/调试/打包/安装路径。插件变更不要求重启主平台或全部 Runtime，旧应用与在途任务保留版本依据。
+- **可共享资源仓库**：应用模板、插件、Skill、MCP 配置和 Prompt 模板均可提交；管理员审核具体版本后，所有正常用户可见。新版本重新审核，公共资源不携带作者密钥或私有数据。
+- **可核查的 RAG 与质量**：区分候选召回、排序、最终上下文、回答与引用；用固定条件、原文标注和逐题结果判断改进，记录回归与开销。
+- **统一 Token 面板**：覆盖对话、Agent、RAG、压缩、评测、优化和插件模型调用，区分已报告/估算/未知，避免父子任务及缓存/推理子项重复统计。
+- **完整应用与部署**：发布 Web/API/Webhook 应用，明确执行身份和用量归属；最终交付 Docker Compose 包，默认挂载与初始化准备好，操作者只需填写数据库和中间件密码。
 
-图示表达产品能力关系，不代表已确定的技术架构。
+内置基础能力必须能独立完成主要路径，插件用于增加能力。完整范围见 [产品架构](requirements/06-product-architecture.md) 和 [能力矩阵](requirements/07-capability-matrix.md)。
 
 <!-- doc-section:roadmap -->
-## 六阶段路线图
+## 七阶段路线图
 
-| 阶段 | 交付的用户结果 | 需求 |
+前六阶段全部属于完整产品，第七阶段完成部署与上线验收。
+
+| 阶段 | 主要结果 | 详细需求 |
 |---|---|---|
-| 1 | 完成有记录、有用量和预算约束的项目对话 | [项目与对话](requirements/phases/phase-01-project-and-chat.md) |
-| 2 | 拖拽并运行可调试、有版本的工作流 | [可视化工作流](requirements/phases/phase-02-visual-workflow.md) |
-| 3 | 结合 MCP、Skill、规则和上下文完成有限多步任务 | [Agent、Skill 与上下文](requirements/phases/phase-03-agent-skills-context.md) |
-| 4 | 使用项目资料检索证据并进行带引用问答 | [知识库与 RAG](requirements/phases/phase-04-knowledge-and-rag.md) |
-| 5 | 对比质量、验证 Prompt 优化并分析成本 | [质量、Prompt 与成本](requirements/phases/phase-05-quality-prompt-cost.md) |
-| 6 | 按需求增强人工介入、长任务、协作和受控执行 | [高级协作与扩展](requirements/phases/phase-06-advanced-collaboration.md) |
+| 1 | 个人空间、模型配置、项目、对话、Prompt、初始 Token 面板、插件声明 | [阶段 1](requirements/phases/phase-01-project-and-chat.md) |
+| 2 | 可视化工作流、变量/条件/子流程、调试、插件节点和两类界面 | [阶段 2](requirements/phases/phase-02-visual-workflow.md) |
+| 3 | Agent、MCP、Skill、AGENTS.md 等规则、渐进披露、上下文与受控代码热变更 | [阶段 3](requirements/phases/phase-03-agent-skills-context.md) |
+| 4 | 知识资料版本、切分、检索策略、重排、引用、检索基线 | [阶段 4](requirements/phases/phase-04-knowledge-and-rag.md) |
+| 5 | 数据集、质量中心、召回依据、Prompt 优化、完整 Token 与费用分析 | [阶段 5](requirements/phases/phase-05-quality-prompt-cost.md) |
+| 6 | 协作/恢复、扫描/表格/跨文档知识、应用发布、公共仓库和个人租户运营 | [阶段 6](requirements/phases/phase-06-publishing-and-operations.md) |
+| 7 | Docker Compose 一键部署、预设挂载、初始化、备份恢复与最终核对 | [阶段 7](requirements/phases/phase-07-docker-compose-deployment.md) |
 
-**阶段 1 交付首个可运行成果，阶段 1–5 组成首个完整核心版本，阶段 6 为后续增强。** 当前所有功能阶段均待确认、未开发。具体依赖、阶段边界与核对方式见 [完整路线图](requirements/02-roadmap.md)。
+阶段依赖、横向能力和退出条件见 [完整路线图](requirements/02-roadmap.md)；需求到 Issue、PR 和验收证据的映射见 [验收追踪](requirements/04-acceptance-and-traceability.md)。
 
 <!-- doc-section:reading -->
 ## 从这里开始
 
-当前可直接阅读和审阅文档，尚无产品启动命令或运行环境要求。
-
-1. 阅读 [项目背景与范围](requirements/01-product-background-and-scope.md)，确认目标用户和使用场景。
-2. 阅读 [路线图](requirements/02-roadmap.md) 与对应阶段需求，确认交付顺序和边界。
-3. 核对 [共性需求](requirements/03-cross-cutting-requirements.md) 中的权限、版本、预算和结果记录。
-4. 通过 [验收与需求追踪](requirements/04-acceptance-and-traceability.md) 检查能力覆盖和任务拆分。
-5. 在 [待决事项](requirements/05-decisions-and-change-log.md) 中确认关键产品选择。
-
-需求确认后再补充技术设计、开发任务和真实的启动说明。详细需求与流程文档目前以中文提供。
+| 想了解什么 | 阅读入口 |
+|---|---|
+| 为什么做、面向谁、哪些能力必须交付 | [项目背景与范围](requirements/01-product-background-and-scope.md) / [需求目录](requirements/README.md) |
+| 产品域、资源关系、页面和用户完整旅程 | [产品架构](requirements/06-product-architecture.md) / [能力矩阵](requirements/07-capability-matrix.md) |
+| 插件开发与公共资源审核 | [插件需求专题](requirements/topics/01-plugin-system.md) / [公共仓库需求专题](requirements/topics/02-public-repositories.md) |
+| 服务、数据、运行和隔离如何设计 | [技术文档目录](technical/README.md) / [技术总架构](technical/01-platform-architecture.md) |
+| 动态插件与自定义界面 | [插件技术设计](technical/02-plugin-runtime-and-ui.md) |
+| MCP、Skill、项目规则、压缩与权限 | [执行与上下文设计](technical/03-execution-context-and-security.md) |
+| RAG 策略、评测依据和 Token 口径 | [知识、质量与用量设计](technical/04-knowledge-quality-and-usage.md) |
+| 共享仓库、在线应用的执行身份和版本 | [公共仓库与发布设计](technical/05-public-repository-and-application-release.md) |
+| 未来部署包、默认服务、挂载和恢复 | [部署技术设计](technical/06-docker-compose-deployment.md) |
+| 已确认约束与后续变更 | [决策记录](requirements/05-decisions-and-change-log.md) / [共性需求](requirements/03-cross-cutting-requirements.md) |
 
 <!-- doc-section:repository -->
 ## 仓库目录
 
-| 目录或文件 | 用途 | 当前边界 |
-|---|---|---|
-| [requirements/](requirements/README.md) | 背景、路线图、共性要求、分期需求、验收与变更 | 描述需求与标准，不确定技术实现 |
-| technical/ | 后续技术文档 | 目前只有 .gitkeep 占位，需求确认后补充 |
-| [image/](image/README.md) | 文档图示与可编辑源文件 | 产品能力、路线图和开发流程图 |
-| [ci/](ci/README.md) | 项目开发与交付流程、Issue/PR/阶段核对模板 | 本次只规定流程，不配置自动化流水线 |
-| [README_EN.md](README_EN.md) | 内容对应的英文项目入口 | 与本 README 保持同步 |
-| [LICENSE](LICENSE) | 项目许可证 | MIT |
+| 路径 | 内容 |
+|---|---|
+| [requirements/](requirements/README.md) | 背景、产品蓝图、能力矩阵、七阶段详细需求、插件/公共仓库专题、验收与决策 |
+| [technical/](technical/README.md) | 总架构与五份专题技术设计；推荐实现方案和后续验证边界 |
+| [image/](image/README.md) | 产品、路线图、开发流程、架构、插件生命周期、审核和部署图；SVG 与可编辑 DOT 同步保存 |
+| [ci/](ci/README.md) | AI 按模板执行的需求拆分、Issue、PR、阶段核对与上线验收流程 |
+
+技术实现建议为 Java/Spring 生态、Vue/LogicFlow、模块化控制服务、独立执行与插件隔离，配合事务数据、缓存、检索和 S3 兼容存储。除用户已指定的 Sa-Token 与 Docker Compose 外，具体组件和兼容版本需按技术蓝图验证后锁定，不表示当前仓库已有相关工程。
 
 <!-- doc-section:development -->
 ## 开发与交付
 
-按 [开发流程](ci/README.md) 执行：
+![按模板执行的开发流程](image/development-flow.svg)
 
-**确认需求 → 拆分 Issue → 按 Issue 开发 → 提交 PR → 检查与编译/构建 → 合并 main → 核对阶段功能。**
+1. AI 读取已确认需求、技术蓝图、总 Issue 以及现有 Issues/PR/main，按 [需求拆分模板](ci/requirement-decomposition-template.md) 查重并差量拆分。
+2. 按 [Issue 模板](ci/issue-template.md) 指定需求、验收项、依赖和明确范围，围绕单个 Issue 开发并提交对应 PR。
+3. 按 [PR 模板](ci/pull-request-template.md) 提供真实检查证据。应用代码合并 main 前至少能正常编译/构建，且无已知明显错误；文档变更检查链接、编号、图示和一致性，不编造应用构建结果。
+4. 每期按 [阶段核对模板](ci/phase-review-template.md) 对照全部功能核对并更新总 Issue；第七期再执行 [上线验收模板](ci/release-acceptance-template.md)。
 
-- 每个开发 Issue 对应一份交付 PR，并注明需求编号与验收证据。
-- 代码 PR 合并前必须排除明显错误，并正常编译或构建通过；使用真实工程提供的命令记录结果。
-- 纯文档 PR 检查内容、链接、图示和需求映射，编译标为“不适用”。
-- 阶段结束逐项检查需求，明确遗漏、失败和延期。PR 合并不自动等于阶段完成。
-
-总规划由 [Issue #1](https://github.com/Ryan-Guizhou/PeachAgent/issues/1) 跟踪；本次文档交付对应 [Issue #2](https://github.com/Ryan-Guizhou/PeachAgent/issues/2)。候选开发任务尚未自动转成已开工 Issue。
+执行细节见 [AI 执行指南](ci/ai-execution-guide.md)。ci 是开发流程与模板目录，本版不配置提交后自动批量创建 Issue 的自动化。
 
 <!-- doc-section:status -->
-## 当前边界
+## 当前进度与部署目标
 
-本仓库正在确认产品需求，暂未确定框架、数据库、接口和部署方式。此前讨论的技术建议没有作为已确认决策写入本版文档。
+[总规划 Issue #1](https://github.com/Ryan-Guizhou/PeachAgent/issues/1) 持续追踪七个阶段；[Issue #4](https://github.com/Ryan-Guizhou/PeachAgent/issues/4) 追踪本次完整规划与文档修订。文档合并与功能实现分别记录，各功能仍需要开发和真实验收。
 
-本次不实施产品代码、自动化 CI/CD、灰度发布、商业计费或大规模运维。图片展示规划和流程，所有验收条目等待真实功能交付后执行。
+目前请从需求和技术目录开始阅读，**不要将部署设计中的未来命令当作当前可运行安装步骤**。第七阶段目标是在受支持的 Linux 主机上提供可获取镜像、Docker Compose 编排、密码配置样例、自动生成内部密钥、预设挂载和完整恢复说明。用户模型/工具凭证在部署后由本人通过界面配置；自定义插件界面默认可用，无额外 DNS 必填项。
 
 <!-- doc-section:license -->
 ## 许可证
 
-本项目使用 [MIT License](LICENSE)。
+本项目采用 [MIT License](LICENSE)。公共资源需另外保留作者和第三方依赖的许可信息；仓库许可证不替所有用户上传内容授予再分发权。
