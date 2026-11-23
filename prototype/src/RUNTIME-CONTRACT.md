@@ -13,12 +13,12 @@
 - 边 `{id,source,target,sourcePort:'next'}`。通常 `next`；IF 为 `true` / `false` / `elif-1` 等；Switch 为配置 case 的 id / `default`；classifier 为标签值；human 为 `approved` / `rejected`；失败为 `error`。使用 `R.ports(node)` 获取 `[{id,label}]`。
 - `R.connections` / `R.plugins` / `R.tools` / `R.resources` / `R.prompts` / `R.skills`：可配置且持久化的目录数组；可直接编辑对象再 `S.save()`。`R.getTool(id)` / `R.getConnection(id)`。
 - tool `{id,name,title,kind:'mcp'|'plugin',connectionId,version,description,write,inputSchema,outputSchema,example}`。初始工具 ID：`web.search`、`web.fetch`、`workspace.write`、`docs.create`、`table.upsert`。连接 ID：`mcp-search`、`mcp-workspace`、`plugin-docs`、`plugin-table`。连接 `{id,name,kind,transport,endpoint,location,status:'ready'|'disabled'|'auth_required',enabled,credentialRef,version,protocolVersion}`。插件 `{id,name,version,status:'installed'|'disabled',enabled,description,toolIds,config}`。
-- 所有运行加入 `S.state.runs`，`engine:'graph'` 用于区分旧演示记录；`kind:'workflow'|'node-debug'|'tool-debug'|'agent'|'subworkflow'`。
+- 所有运行加入 `S.state.runs`，`engine:'graph'` 用于区分旧演示记录；`kind:'workflow'|'node-debug'|'tool-debug'|'agent'|'subworkflow'|'plan-execution'`。
 
 ## 公共方法
 
 - `R.createRun({title,kind,source,agent,model,version,parentRunId,inputs,snapshot})` → run，初始 running。
-- `R.runWorkflow(flow,{inputs={},scenario='success',debug=false,fromNode?,breakpoints=[],parentRunId?,speed?,preserveResolvedSnapshots=false}={})` → run（同步返回，异步推进）。`scenario` 可为全局字符串或 `{nodeId:'empty'}`，测试空结果、失败、超时等。`speed:0` 为测试无延迟。
+- `R.runWorkflow(flow,{inputs={},scenario='success',debug=false,fromNode?,breakpoints=[],parentRunId?,speed?,preserveResolvedSnapshots=false,refreshSnapshot=false}={})` → run（同步返回，异步推进）。`scenario` 可为全局字符串或 `{nodeId:'empty'}`，测试空结果、失败、超时等。`speed:0` 为测试无延迟。
 - `R.testNode(node,{inputs={},context={},scenario='success',speed?}={})` → run。context 可提供 input、nodes、workflow、iteration、loop。
 - `R.testTool(toolId,args,{scenario='success',speed?,approved?}={})` → run。
 - `await R.invokeTool({run,toolId,args,scenario='success',nodeId,nodeExecutionId,approved=false,binding?,connectionId?,timeoutMs?,speed})` → structured result；自动创建 toolCall/events/transcript，写入工具在未批准时暂停 run，审批后继续。
@@ -28,7 +28,7 @@
 - `R.findRun(id)` / `R.validate(flow)` → `{valid,errors:[{nodeId?,message,code}],warnings:[...]}`。
 - `R.resolveBinding(binding,context)` → value（未产生的引用抛出 `UNPRODUCED`）。`R.validateSchema(value,schema)` → 字符串错误数组。
 - `R.snapshot(flow)` → 不含历史/递归发布字段的独立图配置快照。`R.publishedFlow(id)` 返回当前发布配置副本。
-- `R.freezeWorkflow(flow,options={})` → 递归固定子流程、Agent、知识、Prompt、Resource 和工具绑定的图快照。`options.preserveResolvedSnapshots` 要求使用已有快照，缺失时报错；`options.refresh` 仅供明确需要重新解析当前依赖的运行准备使用。
+- `R.freezeWorkflow(flow,options={})` → 递归固定子流程、Agent、知识、Prompt、Resource 和工具绑定的图快照。`options.preserveResolvedSnapshots` 要求使用已有快照，缺失时报错；`options.refresh` 用于明确发布当前配置；显式发布子依赖使用 refresh:false，不改写子版本模型。普通执行默认保留已有快照，refreshSnapshot 是明确更新当前配置的选项。
 - `R.listVariables(flow,nodeId,run?)` → `[{path,type,label,sample?}]`，仅合法上游。
 - `R.event(run,type,data={})` 记录事件；`R.addModelUsage(run,{nodeId,model,inputTokens,outputTokens})` 记录估算用量。
 - `R.waitForRun(run)` Promise：等到 done/failed/rejected/stopped；等待审批不会提前结束。
@@ -57,7 +57,7 @@
 - human: config.fields，bindings.content；批准返回 `{approved:true,...values}`；未配置 rejected 边时拒绝结束。
 - subflow: config.flowId，config.version；执行冻结后 `config.resolvedSnapshot` 保存独立依赖，bindings 为子流程 input。
 - agent: `config.agentId` 与版本；冻结后的 `config.agentSnapshot` 供共享 Agent 运行器使用。
-- knowledge: `config.knowledge`、`topK`、`scoreThreshold`；冻结后 `knowledgeSnapshot` 保存正文和分段，查询调用 ContentStore 的本地关键词检索。
+- knowledge: `config.knowledge`、`topK`、`scoreThreshold`；冻结后 `knowledgeSnapshot` 保存正文和分段，查询调用 ContentStore 的关键词或向量／重排本地模拟，config.rerank=false 可跳过知识设置里的重排阶段。
 - prompt/resource: 分别通过 `config.promptSnapshot`／`resourceSnapshot` 留存上下文；本地 Prompt 与 MCP Prompt 均可引用。
 - output: config.mode:'none'|'data'；bindings 为命名返回字段。none 成功结束且不创建文件。
 - artifact: config.filename、format；bindings.content；只有此类显式能力会创建可下载文件。
@@ -81,13 +81,13 @@
 
 ## 依赖冻结与历史复现
 
-普通编辑器发布保存 Agent／图的配置；本次执行、服务版本和评测任务需要进一步固定依赖内容。使用 `R.snapshot` 不能代替完整依赖冻结。
+编辑器发布通过 freezeSnapshot／freezeWorkflow 保存完整可解析配置；本次执行、服务版本和评测任务继续保留这些固定依赖内容。使用 `R.snapshot` 不能代替完整依赖冻结。
 
 - `R.freezeWorkflow(flow)` 和 `S.AgentStudio.freezeSnapshot(snapshot)` 深复制并递归解析依赖。循环引用、缺少已发布子配置或过深依赖明确报错。
 - Workflow 的 `config.body.nodes`、子流程、Agent 节点，以及 Agent 上下文中的工作流／子 Agent 都遵守同一规则。
 - 知识正文、Prompt／Skill／Resource 内容固定到对应 snapshot。服务和评测启动后不回读当前内容来替换已有快照。
 - 重放已经冻结的服务、评测或历史配置，调用 `runWorkflow`／`AgentStudio.start` 时传 `preserveResolvedSnapshots:true`；该选项向嵌套运行传播。缺少快照会形成准备错误，不静默使用 live 配置。
-- 普通新执行可在启动时获取当前依赖并冻结当次内容。修改当前配置不会改写已保存的运行。
+- 普通新执行保留已发布模型及已有依赖快照；缺失的旧配置可解析并固定本次内容。显式重新发布才刷新当前对象的模型配置，发布子依赖保持其版本。
 - 连接启停、凭证可用性和工具版本兼容仍在每次调用时验证。版本冻结不是跳过授权或停用的途径。
 
 ```js
@@ -101,9 +101,9 @@ await Studio.Runtime.waitForRun(run);
 
 ## AgentStudio
 
-`S.AgentStudio.start({agentId,snapshot?,goal,mode,sessionSnapshot?,parentRunId?,preserveResolvedSnapshots?})` 同步返回 run，异步推进。完整应用中 Agent 节点、独立 Chat、API 试调与评测都调用该入口。
+`S.AgentStudio.start({agentId,ephemeralAgent?,snapshot?,goal,mode,sessionSnapshot?,parentRunId?,depth?,preserveResolvedSnapshots?,refreshSnapshot?,capabilitySnapshots?})` 同步返回 run，异步推进。完整应用中 Agent 节点、独立 Chat、API 试调与评测都调用该入口。
 
-`freezeSnapshot(snapshot,options={})` 递归固定 `knowledgeSnapshot`、`contextBindings[].snapshot`、上下文工作流的 `resolvedSnapshot` 和子 Agent 的 `agentSnapshot`。`preserveResolvedSnapshots:true` 禁止回退当前内容；`refresh:true` 用于明确选择当前配置的新执行。`planTools` 为确定性本地规划器，不代表真实大模型推理。
+`freezeSnapshot(snapshot,options={})` 递归固定 `knowledgeSnapshot`、`contextBindings[].snapshot`、上下文工作流的 `resolvedSnapshot` 和子 Agent 的 `agentSnapshot`。`preserveResolvedSnapshots:true` 禁止回退当前内容；`refresh:true` 用于明确发布当前配置；显式发布子依赖不继承这个刷新选项。模型使用 modelSnapshot 固定实例和服务商；会话显式选择另一模型时建立新的本轮模型快照。`planTools` 为确定性本地规划器，不代表真实大模型推理。
 
 `sessionFor(agent)` 管理会话；`saveConfig(publish)` 保存或发布当前工作台配置；`invalidateDraft(id)` 清除对应 UI 缓存。会话能力变更影响之后的消息，已经开始的运行保存独立配置。Prompt 的 `contextBindings[].arguments` 保存参数，字符串中的 `{{message}}` 在当轮替换为 goal；工作流 `R.inputSchemaFor(node)` 根据 Prompt 的实际 arguments 生成输入 Schema。
 
@@ -113,7 +113,7 @@ await Studio.Runtime.waitForRun(run);
 
 ### 内容结构
 
-- 知识库：`{id,name,description,tags,status:'active'|'archived',version,revision,settings:{chunkSize,overlap},documents,versions}`。
+- 知识库：`{id,name,description,tags,status:'active'|'archived',version,revision,settings:{chunkSize,overlap,retrievalMode:'keyword'|'vector'|'hybrid',embeddingModel?,rerankModel?,embeddingModelSnapshot?,rerankModelSnapshot?},documents,versions}`。
 - 文档：`{id,name,content,sourceType,mime,bytes,status,chunks:[{id,index,text}],created,updated}`。仅有元数据的旧记录标 `needs_content`。
 - Prompt／Skill：`{id,type:'prompt'|'skill',name,description,content,tags,dependencies,arguments,status,version,versions}`。`arguments` 从 `{{variable}}` 模板提取。
 - 内容版本是独立正文与配置副本。归档阻止新的编辑或常规检索；已有固定快照可供历史执行继续引用。
@@ -125,13 +125,13 @@ await Studio.Runtime.waitForRun(run);
 - `C.addDocument(knowledgeId,values)`：有文档 id 则编辑；`C.removeDocument(knowledgeId,documentId)` / `C.reindex(knowledgeId)`。
 - `await C.importDocument(knowledgeId,file,{shouldContinue?})`：读取 TXT／MD／JSON 正文；取消或读取过期后不落库。
 - `C.snapshotKnowledge(id,version?)`：返回当前或指定版本副本。
-- `C.searchSnapshot(snapshot,query,{topK,scoreThreshold}?)`：不读取 live 内容，返回 `{items,total,version,mode:'local-keyword',query,topK,scoreThreshold}`；每条含文档、分段、score、source 和 matchedTerms。
+- `C.searchSnapshot(snapshot,query,{topK,scoreThreshold,rerank}?)`：不读取 live 内容，返回 `{items,total,version,mode,query,topK,scoreThreshold,modelStages,simulation}`；每条含文档、分段、score、source 和 matchedTerms。关键词模式为 local-keyword，其它模式明确附 simulation。
 - `C.searchKnowledge(id,query,options?)`：便捷检索入口，可传 `version` 或 `snapshot`。
 - `C.listContent(options?)` / `C.getContent(id,version?)` / `C.saveContent(values)` / `C.copyContent(id)`。
 - `C.listContexts(kind)`：供 Agent 选择本地 Prompt／Skill；`C.resolveContext({kind,id,version?})` 返回对应内容快照。
 - `C.archive(kind,id,archived)`、`C.references(kind,id)`、`C.installTemplate(asset)`。
 
-引用本地内容时不能把它再伪造成一个 MCP 连接。知识检索是保存正文的本地关键词匹配，没有网络、嵌入模型、向量库或 OCR。UI 的版本、分段、引用与数量从此状态计算。
+引用本地内容时不能把它再伪造成一个 MCP 连接。知识检索使用保存正文的关键词匹配，或 64 维词项哈希向量与确定性重排的本地模拟。模型配置按知识版本固定，停用状态仍即时检查；没有真实模型网络调用、向量库或 OCR。UI 的版本、分段、引用与数量从此状态计算。
 
 ## Publishing：服务与 API Key
 
@@ -210,3 +210,43 @@ API 调用实际复用 `R.runWorkflow` 或 `S.AgentStudio.start` 并传 `preserv
 所有模块加载后才渲染完整应用，页面跨模块链接通过公开接口调用。工具连接、知识内容、服务 Key、评测数据拥有各自唯一 namespace，不能再创建一个平行的“资产”对象来复制状态。
 
 验证脚本在 `qa/`，包括 Runtime、工作流、能力、跨模块、内容、发布、质量与产品集成。记录实际执行结果，避免在本契约固定测试数量；真实浏览器行为另行验收。
+
+## StudioAuth：账户与工作区
+
+`auth.js` 在 core 之前加载，不依赖 Studio.state。`StudioAuth.attach(Studio)` 在全部模块加载后、init 之前注册页面。
+
+- `workspaceStorageKey()` 返回账户专属 key 或旧演示 key；core 在启动时捕获一次，不随过渡中的身份改变。
+- `guard(hash)` 返回安全站内 hash；`isAuthRoute(route)` 决定独立账户页面壳。
+- `getSession()` 只暴露安全的账户和有效期元数据。`openAccount()` 打开账户与退出入口。
+- `logout({force:false})`、`expire()` 停止工作区异步活动并清除会话凭据；身份转换通过重载重新初始化所有状态闭包。
+
+独立账户记录包含 PBKDF2 加盐验证器，不保存密码正文；会话通常 12 小时，记住登录为 7 天。演示重置挑战只在页面内存保存，10 分钟有效、成功即销毁，不通过 URL 传递，也不发送邮件。认证是本地原型流程，不构成服务端鉴权。
+
+## Models：唯一模型配置来源
+
+`S.state.modelRegistry={schema:1,providers,models,defaults,debugRuns}`。旧 S.state.models 是同步兼容视图，不能建立第二个管理入口。模型本地 id 与厂商 modelId 分开，名称更改保留 aliases。
+
+- `M.list({type,enabled,capabilities,providerId,archived})`；`resolve(idOrName,options)` 类型和能力不符会抛明确错误。
+- `M.snapshot(idOrName,options)` 深冻结模型参数、能力与 provider 配置引用，不含真实凭据。
+- `M.assertAvailable(snapshotOrId,options)` 检查当前模型及原快照连接启停、类型和能力。
+- `M.saveProvider`、`saveModel`、`setStatus`、`remove`、`defaults`、`setDefault`、`references`、`providerReferences` 管理唯一注册表。引用包含应用服务版本、评测、知识、发布配置和活动运行。
+- `M.selectionOptions(type,selected,options)` 生成统一原生 select 选项，空选择与不可用原值均明确展示。
+- `M.freezeBinding(selection,previous,options)` 先解析稳定 ID 和用途，再保留或刷新快照；外部 modelId 不能充当本地绑定 ID 规避类型检查。
+- `M.migrateLegacyBindings()` 只处理明确配置 owner；对旧名称发布配置一次捕获，记录 legacy-name 来源。未知或停用保持阻断，不自动替换。已完成运行不重新迁移。
+
+类型为 llm、embedding、rerank、image、stt、tts。协议和能力由模型实例声明；服务商模板不等同于真实兼容认证。知识保存同时固定向量／重排配置；`R.recordRetrievalUsage(run,result,meta)` 将实际本地模拟阶段写入估算用量事件。
+
+## Planning：运行范围的自主协作
+
+`Planning.prepare(run,{goal,snapshot,sessionSnapshot})` 生成 `run.plan`，schema 为 delegation-v1。保留旧 steps/snapshot/sessionSnapshot 兼容字段，新增 tasks、agents、policy、limits、modelPool、capabilitySnapshots 与执行历史。
+
+- 每个 task 保存 agentId、name、role、instruction、inputNote、outputNote、dependsOn、toolIds、modelMode、modelId、modelSnapshot、temperature、maxTokens、maxCost。
+- `updateTask`、`addTask`、`removeTask`、`updatePolicy` 校验依赖循环、预算、模型池和父授权边界。
+- `execute(planRunId)` 创建 kind=plan-execution 的协调 Run。原计划、协调 Run、子 Run 通过 parentRunId 共享 traceId。重复点击返回活跃协调 Run；结束后需 duplicate 创建待确认的新计划。
+- `childSnapshot` 创建临时 Agent，`AgentStudio.start({ephemeralAgent,snapshot,preserveResolvedSnapshots:true,capabilitySnapshots})` 执行，工具定义进一步缩小到任务 allowlist。临时 Agent 不进入永久列表；saveDraft 是明确单独动作。
+- 依赖任务的实际结果作为后续输入，按 concurrency 有界调度。父与子预算、时限、数量、深度均检查；不得扩大工具范围，也不能自动批准写入。
+- 协调 Run 转发待确认 child，记录 waitingRunIds；拒绝、失败或停止会停止未完成任务，保留已发生的回执。`stopAll()` 用于登出与过期。
+- `delegationUsage` 汇总子用量供展示，协调 Run 不重复增加 tokens/cost。resultMode=none 可成功且无返回值／文件；实际回执继续保留。
+- `card`、`open` 和 plan/planning 页面共享同一计划状态；从详情执行也追加回来源 Chat 会话。
+
+自动分工与模型输出均为可观察的本地规则模拟，实际任务 DAG、审批、取消、子 Run 与 Trace 由共享执行器执行。

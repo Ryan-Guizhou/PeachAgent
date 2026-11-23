@@ -57,7 +57,7 @@ MCP Resources／Prompts 仍属于其服务连接；本地维护的 Prompt／Skil
 
 ## 体验路径三：知识、提示词与 Skill 由用户维护
 
-**知识库**支持创建、编辑、归档与恢复；每个库独立维护文档正文、分段长度、重叠长度和版本。粘贴正文或导入 TXT／Markdown／JSON，检查分段后做检索测试。结果展示来源文档、分段和匹配度；当前是本地关键词匹配，没有嵌入模型或向量库。支持的正文文件不超过 512 KB，正文保存上限为 200,000 个字符；PDF／Word 解析尚未接入。
+**知识库**支持创建、编辑、归档与恢复；每个库独立维护文档正文、分段长度、重叠长度和版本。粘贴正文或导入 TXT／Markdown／JSON，检查分段后做检索测试。结果展示来源文档、分段和匹配度；关键词模式直接匹配正文；向量／混合和重排配置使用明确标记的本地模拟阶段，没有请求真实模型服务或连接向量库。支持的正文文件不超过 512 KB，正文保存上限为 200,000 个字符；PDF／Word 解析尚未接入。
 
 **提示词与 Skills**支持编辑正文、模板参数、依赖说明、复制、导出、归档和版本查看。它们是可复用上下文；Skill 的依赖说明不会自动授权工具。Agent 能选择本地 Prompt／Skill，也能选择 MCP Resources／Prompts、已发布工作流和子 Agent。Prompt 绑定有独立参数表单，支持 `{{message}}` 引用本轮输入或填写固定值；工作流 Prompt 节点按所选模板的实际参数生成输入 Schema。内置 Skill 也进入内容库维护。
 
@@ -117,6 +117,10 @@ MCP Resources／Prompts 仍属于其服务连接；本地维护的 Prompt／Skil
 | --- | --- |
 | `index.html` | 入口、共享容器和模块加载顺序 |
 | `styles.css` / `product-polish.css` | 语义令牌、共享组件、工作台与导航收敛 |
+| `auth.js/css` | 登录、注册、本地恢复、会话生命周期和账号工作区 key |
+| `models.js/css` | 服务商连接、六类模型实例、用途默认值、模拟调试与引用 |
+| `model-bindings.js` | 统一模型选择、固定配置及旧名称发布配置的显式迁移 |
+| `planning.js/css` | 临时子 Agent 计划、模型池、任务依赖、并发执行与共享 Trace |
 | `core.js` | 状态、保存与存储失败提示、路由、表单、dialog、通知和旧记录兼容 |
 | `runtime.js` | 37 节点元数据、图执行、变量、审批、工具适配器、依赖冻结与事件 |
 | `workspace.js` | 工作台、Agent 列表及旧路由兼容；新版 Agent 页面由后加载模块接管 |
@@ -128,11 +132,19 @@ MCP Resources／Prompts 仍属于其服务连接；本地维护的 Prompt／Skil
 | `publishing.js/css` | 应用服务、API Key 生命周期、接入示例、本地 Playground 与调用日志 |
 | `quality.js/css` | 评测集 CRUD、导入导出、规则、版本、任务、比较和复核 |
 | `ecosystem.js/css` | 资源市场、模板路由、管理员审核和旧资产迁移入口 |
-| `governance.js/css` | 用量、模型、空间设置和 Compose 配置草案 |
+| `governance.js/css` | 用量、空间偏好和 Compose 配置草案；旧模型入口转模型中心 |
 | `qa/` | 离线契约、渲染标记检查与验证记录 |
 | `build.py` | 将拆分源码打包为上一级 `OTRYX_Studio.html` |
 
 所有外部前端依赖为零；Node.js 和 Python 检查使用内置模块。共享接口详见 [RUNTIME-CONTRACT.md](RUNTIME-CONTRACT.md)，产品与交互说明见 [PRODUCT.md](PRODUCT.md)、[PRODUCT-PLAN.md](PRODUCT-PLAN.md) 和 [UX-CONTRACT.md](UX-CONTRACT.md)。
+
+## 账户与多模型协作
+
+- 首次打开显示登录页，注册账户有独立工作区；“进入演示空间”使用原有示例和以前保存的数据。密码校验采用浏览器 Web Crypto；不支持它的环境仍可使用演示入口。重置密码是本地演示，不验证真实邮箱所有权。
+- 模型中心分别管理服务商连接和模型实例。按类型维护参数、能力、默认用途和调试输入；模型名或品牌不会自动授予工具调用能力。LLM、Embedding 与 Rerank 选择互相隔离。
+- 在 Agent Chat 切到规划，或进入协作计划创建目标。先审阅临时子 Agent 的职责、依赖和模型，再执行。可扩大允许的语言模型池并自动分配，也可逐任务手动指定。
+- 总预算、最大子 Agent 数、并发和深度在父策略范围内。写入逐项确认；拒绝、失败、停止及退出都会停止未完成的下游任务。父任务和子运行保留相同 Trace，成本按各运行自身记录只累计一次。
+- 侧栏 DOM 常驻；同页刷新只更新活动项、数值和身份文本，不重建滚动容器。路由使用 History API 控制 fragment 地址，避免锚点的原生跳转干扰。
 
 ## 构建与验证
 
@@ -158,7 +170,7 @@ node qa/publishing-contract.cjs
 - Agent 的工具规划和模型回复是确定性的本地模拟，不是真实大模型推理。
 - API Key 权限和配额在同一浏览器内校验，不能替代服务端身份隔离、持久计数与秘密保管。
 - 质量规则来自用户维护的输入和参考，不提供 LLM 语义判分，也不自动生成“优秀”的分数。
-- 知识是本地正文与关键词检索；远程抓取、OCR、向量检索和大规模索引尚未接入。
+- 知识基于本地正文，支持关键词检索与向量／重排配置的本地模拟；真实模型检索、远程抓取、OCR 和大规模索引尚未接入。
 - Webhook、调度、真实 MCP HTTP／stdio、数据库和沙箱尚无后端；浏览器不执行任意用户代码或启动进程。
 - 运行中断后保存历史并停止，刷新不会自动重放写入。多用户、持久队列、远端追踪上报、生产监控、真实热更新和容器部署仍需正式工程实现。
 - Compose 页只导出配置草案，没有可直接拉取的 OTRYX 生产镜像。
@@ -166,3 +178,12 @@ node qa/publishing-contract.cjs
 ## 参考依据
 
 本轮参考 [Dify 的应用 API 接入](https://docs.dify.ai/en/api-reference/guides/get-started)中应用作用域 Key、接入契约和终端用户标识的组织方式，以及 [LangSmith 的数据集维护](https://docs.langchain.com/langsmith/manage-datasets-in-application)中手工样例、文件导入、Schema、分组与从 Trace 回收数据的流程。布局、对象入口和本地交互按本原型的使用任务重新组织。
+
+## 本轮协议参考
+
+- [Ollama OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility)：兼容范围是 API 子集，模型能力需单独声明。
+- [vLLM serving](https://docs.vllm.ai/en/latest/serving/openai_compatible_server/)：区分生成、嵌入与重排的请求协议。
+- [Cohere Rerank](https://docs.cohere.com/reference/rerank)：重排使用 query、documents、top_n 等独立输入。
+- [Gemini Embeddings](https://ai.google.dev/gemini-api/docs/embeddings)：嵌入属于独立模型用途。
+
+这些资料用于确定配置对象与协议边界，当前原型未宣称已真实连接上述服务。

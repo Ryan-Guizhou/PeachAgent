@@ -17,6 +17,9 @@
   <link rel="stylesheet" href="knowledge.css">
   <link rel="stylesheet" href="publishing.css">
   <link rel="stylesheet" href="quality.css">
+  <link rel="stylesheet" href="auth.css">
+  <link rel="stylesheet" href="models.css">
+  <link rel="stylesheet" href="planning.css">
   <link rel="stylesheet" href="product-polish.css">
 </head>
 <body>
@@ -34,18 +37,22 @@
   <dialog id="app-dialog" aria-labelledby="dialog-title"></dialog>
   <div id="toast-stack" class="toast-stack" role="status" aria-live="polite" aria-atomic="false"></div>
   <noscript><p style="padding:30px;margin:30px;background:white">请启用 JavaScript，以体验 OTRYX Studio 交互原型。</p></noscript>
+  <script src="auth.js"></script>
   <script src="core.js"></script>
   <script src="runtime.js"></script>
   <script src="workspace.js"></script>
   <script src="builder.js"></script>
   <script src="ecosystem.js"></script>
   <script src="governance.js"></script>
+  <script src="models.js"></script>
   <script src="capability-ui.js"></script>
   <script src="knowledge.js"></script>
   <script src="trace.js"></script>
   <script src="agent-studio.js"></script>
   <script src="publishing.js"></script>
   <script src="quality.js"></script>
-  <script>window.addEventListener('DOMContentLoaded', function () { Studio.init(); });</script>
+  <script src="model-bindings.js"></script>
+  <script src="planning.js"></script>
+  <script>window.addEventListener('DOMContentLoaded', function () { StudioAuth.attach(Studio); Studio.init(); });</script>
 </body>
 </html>

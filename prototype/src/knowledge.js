@@ -25,7 +25,18 @@
   };
   function labelValid(value, label) { const result = text(value); if (!result || result.length > 80) throw fail('INVALID_NAME', label + '请填写 1—80 个字符。'); return result; }
   function bodyValid(value) { const result = String(value == null ? '' : value).replace(/\r\n?/g, '\n'); if (!result.trim()) throw fail('CONTENT_EMPTY', '请填写资料正文。'); if (result.length > 200000) throw fail('CONTENT_TOO_LARGE', '正文最多 200,000 个字符，请拆分资料。'); if (hasSecret(result)) throw fail('SECRET_CONTENT', '检测到疑似访问凭据，请移除后保存。'); return result; }
-  function settingsValid(value) { const chunkSize = Number(value.chunkSize == null ? 500 : value.chunkSize), overlap = Number(value.overlap == null ? 50 : value.overlap); if (!Number.isInteger(chunkSize) || chunkSize < 100 || chunkSize > 2000) throw fail('INVALID_CHUNK', '分段长度应为 100—2,000 的整数。'); if (!Number.isInteger(overlap) || overlap < 0 || overlap >= chunkSize || overlap > 500) throw fail('INVALID_OVERLAP', '重叠长度应为 0—500 的整数，且小于分段长度。'); return { chunkSize, overlap }; }
+  function settingsValid(value) {
+    const chunkSize=Number(value.chunkSize==null?500:value.chunkSize),overlap=Number(value.overlap==null?50:value.overlap);
+    if(!Number.isInteger(chunkSize)||chunkSize<100||chunkSize>2000)throw fail('INVALID_CHUNK','分段长度应为 100—2,000 的整数。');
+    if(!Number.isInteger(overlap)||overlap<0||overlap>=chunkSize||overlap>500)throw fail('INVALID_OVERLAP','重叠长度应为 0—500 的整数，且小于分段长度。');
+    const retrievalMode=value.retrievalMode||'keyword',embeddingModel=text(value.embeddingModel),rerankModel=text(value.rerankModel);
+    if(!['keyword','vector','hybrid'].includes(retrievalMode))throw fail('RETRIEVAL_MODE','请选择关键词、向量或混合检索。');
+    if(retrievalMode!=='keyword'&&!embeddingModel)throw fail('EMBEDDING_REQUIRED','向量或混合检索需要选择一个向量模型。');
+    const settings={chunkSize,overlap,retrievalMode,embeddingModel,rerankModel};
+    if(embeddingModel){if(!S.Models)throw fail('MODELS_UNAVAILABLE','请先加载模型中心。');settings.embeddingModelSnapshot=clone(S.Models.snapshot(embeddingModel,{type:'embedding'}));}
+    if(rerankModel){if(!S.Models)throw fail('MODELS_UNAVAILABLE','请先加载模型中心。');settings.rerankModelSnapshot=clone(S.Models.snapshot(rerankModel,{type:'rerank'}));}
+    return settings;
+  }
   function splitDocument(document, settings) {
     const content = String(document.content || '');
     const chunks = [];
@@ -133,6 +144,8 @@
     const terms = normalized.match(/[a-z0-9_-]+|[\u3400-\u9fff]+/g) || [];
     return [...new Set(terms.flatMap(term => /[\u3400-\u9fff]/.test(term) && term.length > 2 ? [term, ...Array.from({ length: term.length - 1 }, (_, i) => term.slice(i, i + 2))] : [term]))];
   }
+  function localVector(value){const vector=Array(64).fill(0);for(const term of queryTerms(value)){let hash=2166136261;for(const char of term)hash=Math.imul(hash^char.codePointAt(0),16777619)>>>0;vector[hash%64]++;}const norm=Math.sqrt(vector.reduce((sum,n)=>sum+n*n,0))||1;return vector.map(n=>n/norm);}
+  function vectorSimilarity(left,right){return Math.max(0,Math.min(1,left.reduce((sum,n,i)=>sum+n*right[i],0)));}
   C.searchSnapshot = (snapshot, query, options) => {
     const opts = options || {};
     if (text(query).length > 500) throw fail('QUERY_TOO_LONG', '查询内容最多 500 个字符。');
@@ -141,12 +154,20 @@
     const thresholdValue = Number(opts.scoreThreshold == null ? 0.2 : opts.scoreThreshold);
     if (!Number.isFinite(thresholdValue) || thresholdValue < 0 || thresholdValue > 1) throw fail('INVALID_THRESHOLD', '最低匹配度应在 0—1 之间。');
     if (!snapshot || !Array.isArray(snapshot.documents)) throw fail('INVALID_KNOWLEDGE_SNAPSHOT', '知识快照不可用。');
-    const items = terms.length ? snapshot.documents.flatMap(doc => (doc.chunks || splitDocument(doc, snapshot.settings || { chunkSize: 500, overlap: 50 })).map(chunk => {
+    const settings=snapshot.settings||{},retrievalMode=settings.retrievalMode||'keyword',modelStages=[];
+    const stage=(key,type)=>{const frozen=settings[key+'Snapshot'];if(!frozen)throw fail('MODEL_SNAPSHOT_MISSING','知识库模型快照缺失，请重新保存知识库设置。');S.Models?.assertAvailable(frozen,{type});return frozen;};
+    const embedding=retrievalMode!=='keyword'?stage('embeddingModel','embedding'):null,rerank=settings.rerankModel&&opts.rerank!==false?stage('rerankModel','rerank'):null;
+    const queryVector=embedding?localVector(query):null;
+    let items = terms.length ? snapshot.documents.flatMap(doc => (doc.chunks || splitDocument(doc, snapshot.settings || { chunkSize: 500, overlap: 50 })).map(chunk => {
       const source = (doc.name + '\n' + chunk.text).toLocaleLowerCase();
       const matched = terms.filter(term => source.includes(term));
-      return { id: chunk.id, documentId: doc.id, title: doc.name, text: chunk.text, score: +(matched.length / terms.length).toFixed(4), matchedTerms: matched, source: 'knowledge://' + snapshot.id + '/' + doc.id + '#chunk-' + chunk.index, knowledgeId: snapshot.id, version: snapshot.version, chunkIndex: chunk.index };
+      const keywordScore=matched.length/terms.length,vectorScore=queryVector?vectorSimilarity(queryVector,localVector(source)):0;
+      const score=retrievalMode==='vector'?vectorScore:retrievalMode==='hybrid'?.5*keywordScore+.5*vectorScore:keywordScore;
+      return { id: chunk.id, documentId: doc.id, title: doc.name, text: chunk.text, score: +score.toFixed(4), keywordScore: +keywordScore.toFixed(4), matchedTerms: matched, source: 'knowledge://' + snapshot.id + '/' + doc.id + '#chunk-' + chunk.index, knowledgeId: snapshot.id, version: snapshot.version, chunkIndex: chunk.index };
     })).filter(item => item.score > 0 && item.score >= thresholdValue).sort((a, b) => b.score - a.score || a.title.localeCompare(b.title, 'zh-CN') || a.chunkIndex - b.chunkIndex) : [];
-    return { items: items.slice(0, topK), total: items.length, version: snapshot.version, mode: 'local-keyword', query: text(query), topK, scoreThreshold: thresholdValue };
+    if(embedding)modelStages.push({type:'embedding',snapshot:embedding,inputTokens:Math.ceil((text(query).length+snapshot.documents.reduce((sum,doc)=>sum+String(doc.content||'').length,0))/1.7),outputTokens:0});
+    if(rerank){const candidates=items.slice(0,Math.max(topK,Math.min(100,Number(rerank.config?.maxDocuments)||50)));modelStages.push({type:'rerank',snapshot:rerank,inputTokens:Math.ceil((text(query).length+candidates.reduce((sum,item)=>sum+item.text.length,0))/1.7),outputTokens:0});items=candidates.map(item=>({...item,retrievalScore:item.score,score:+(.7*item.keywordScore+.3*item.score).toFixed(4)})).sort((a,b)=>b.score-a.score||a.chunkIndex-b.chunkIndex);}
+    return { items:items.slice(0,topK),total:items.length,version:snapshot.version,mode:retrievalMode==='keyword'&&!rerank?'local-keyword':'local-'+retrievalMode+(rerank?'-rerank':'')+'-simulation',query:text(query),topK,scoreThreshold:thresholdValue,modelStages,simulation:!!(embedding||rerank) };
   };
   C.searchKnowledge = (id, query, options) => {
     const opts = options || {}, kb = C.getKnowledge(id);
@@ -303,14 +324,19 @@
     if (!items.length) return S.empty(q ? '没有匹配的知识库' : ui.knowledgeState === 'archived' ? '没有已归档的知识库' : '创建第一份知识库', q ? '清除搜索或更换关键词。' : '把需要反复引用的资料放在一起，供 Agent 和工作流检索。', S.btn(q ? '清除搜索' : '新建知识库', q ? 'cs-knowledge-clear' : 'cs-knowledge-new', { variant: 'secondary', icon: q ? 'close' : 'plus' }));
     return '<div class="cs-table-wrap"><table class="cs-table"><thead><tr><th>知识库</th><th>资料 / 分段</th><th>版本</th><th>更新时间</th><th>状态</th><th>操作</th></tr></thead><tbody>' + data.rows.map(k => '<tr><td><a class="cs-name" href="#knowledge-detail?id=' + encodeURIComponent(k.id) + '">' + E(k.name) + '</a><p class="cs-description">' + E(k.description || '未填写说明') + '</p></td><td>' + k.documents.length + ' / ' + k.documents.reduce((n, d) => n + d.chunks.length, 0) + '</td><td><span class="mono">v' + E(k.version) + '</span></td><td>' + date(k.updated) + '</td><td>' + badge(k) + '</td><td>' + S.btn(k.status === 'archived' ? '恢复' : '管理资料', k.status === 'archived' ? 'cs-restore-kb' : 'cs-knowledge-open', { variant: 'ghost', small: true, attrs: attr(k.id) }) + '</td></tr>').join('') + '</tbody></table></div>' + pager(data, 'knowledgePage');
   }
+  function knowledgeModels(settings={}){
+    if(!S.Models)return '';
+    const modelSelect=(label,id,type,value,blank)=>'<div class="field"><label class="field-label" for="'+id+'">'+label+'</label><select class="select" id="'+id+'" name="'+id+'">'+S.Models.selectionOptions(type,value,{blankLabel:blank})+'</select></div>';
+    return '<div class="divider"></div>'+select('检索方式','cs-kb-mode',[{id:'keyword',label:'关键词匹配'},{id:'vector',label:'向量检索 · 本地模拟'},{id:'hybrid',label:'混合检索 · 本地模拟'}],settings.retrievalMode||'keyword')+'<div class="grid-2">'+modelSelect('向量模型','cs-kb-embedding','embedding',settings.embeddingModel||'','关键词检索可不选择')+modelSelect('重排模型','cs-kb-rerank','rerank',settings.rerankModel||'','不重排')+'</div><p class="field-help">向量和混合检索需选择向量模型。切换模型会保存新知识版本；已发布应用保留原配置。向量和重排使用确定性的本地算法模拟，不请求真实模型服务。</p><a class="text-link" href="#models">管理模型与默认用途</a>';
+  }
   function openKnowledge(values) {
     const kb = values?.id ? C.getKnowledge(values.id) : null;
-    S.modal({ title: kb ? '编辑知识库' : '新建知识库', subtitle: '只管理可检索资料。外部工具请到“工具与连接”配置。', body: '<form id="cs-knowledge-form" data-form="cs-knowledge-save" novalidate><input type="hidden" name="recordId" value="' + E(kb?.id || '') + '">' + field('名称', 'cs-kb-name', kb?.name, '1—80 个字符') + field('说明', 'cs-kb-description', kb?.description, '说明资料范围，帮助使用者选对知识库。') + '<div class="grid-2">' + field('每段字符数', 'cs-kb-size', String(kb?.settings.chunkSize || 500), '100—2,000；调整后重新切分已有资料。') + field('重叠字符数', 'cs-kb-overlap', String(kb?.settings.overlap ?? 50), '0—500，且小于分段长度。') + '</div>' + field('标签', 'cs-kb-tags', (kb?.tags || []).join('，'), '用逗号分隔') + '<p class="field-error cs-form-error" role="alert" tabindex="-1"></p></form>', footer: S.btn('取消', 'modal-close', { variant: 'secondary' }) + S.btn(kb ? '保存修改' : '创建知识库', 'cs-knowledge-save', { icon: 'check' }) });
+    S.modal({ title: kb ? '编辑知识库' : '新建知识库', subtitle: '只管理可检索资料。外部工具请到“工具与连接”配置。', body: '<form id="cs-knowledge-form" data-form="cs-knowledge-save" novalidate><input type="hidden" name="recordId" value="' + E(kb?.id || '') + '">' + field('名称', 'cs-kb-name', kb?.name, '1—80 个字符') + field('说明', 'cs-kb-description', kb?.description, '说明资料范围，帮助使用者选对知识库。') + '<div class="grid-2">' + field('每段字符数', 'cs-kb-size', String(kb?.settings.chunkSize || 500), '100—2,000；调整后重新切分已有资料。') + field('重叠字符数', 'cs-kb-overlap', String(kb?.settings.overlap ?? 50), '0—500，且小于分段长度。') + '</div>' + field('标签', 'cs-kb-tags', (kb?.tags || []).join('，'), '用逗号分隔') + knowledgeModels(kb?.settings) + '<p class="field-error cs-form-error" role="alert" tabindex="-1"></p></form>', footer: S.btn('取消', 'modal-close', { variant: 'secondary' }) + S.btn(kb ? '保存修改' : '创建知识库', 'cs-knowledge-save', { icon: 'check' }) });
   }
   function saveKnowledgeForm(form) {
     if (!form || !S.validate(form, { 'cs-kb-name': '请填写名称', 'cs-kb-size': v => !/^\d+$/.test(v) ? '请输入整数' : null, 'cs-kb-overlap': v => !/^\d+$/.test(v) ? '请输入整数' : null })) return;
-    const get = name => form.elements.namedItem(name).value;
-    const kb = handle(form, () => C.saveKnowledge({ id: get('recordId') || undefined, name: get('cs-kb-name'), description: get('cs-kb-description'), tags: get('cs-kb-tags'), settings: { chunkSize: get('cs-kb-size'), overlap: get('cs-kb-overlap') } }));
+    const get = name => form.elements.namedItem(name)?.value||'';
+    const kb = handle(form, () => C.saveKnowledge({ id: get('recordId') || undefined, name: get('cs-kb-name'), description: get('cs-kb-description'), tags: get('cs-kb-tags'), settings: { chunkSize: get('cs-kb-size'), overlap: get('cs-kb-overlap'),retrievalMode:get('cs-kb-mode')||'keyword',embeddingModel:get('cs-kb-embedding'),rerankModel:get('cs-kb-rerank') } }));
     if (kb) { S.go('knowledge-detail', { id: kb.id }); S.toast('知识库已保存'); }
   }
   C.openKnowledge = openKnowledge;
@@ -324,7 +350,7 @@
   }
   function retrievalPanel(kb) {
     const result = ui.results?.knowledgeId === kb.id ? ui.results : null;
-    return '<section class="panel cs-section"><div class="cs-section-heading"><div><h2>检索试验</h2><p>本地按关键词匹配实际正文，分数表示关键词命中比例。</p></div>' + S.badge('本地检索', 'info') + '</div><form id="cs-retrieval-form" data-form="cs-retrieval" novalidate>' + field('查询内容', 'cs-query', ui.query, '修改正文、分段参数或查询条件后，结果会相应变化。') + '<div class="cs-retrieval-options">' + field('返回条数', 'cs-topk', String(ui.topK), '1—20') + field('最低匹配度', 'cs-threshold', String(ui.threshold), '0—1') + select('资料版本', 'cs-version', (kb.versions || []).slice().reverse().map(v => ({ id: v.version, label: (v.version === kb.version ? '当前版本 v' : 'v') + v.version + ' · ' + v.reason })), kb.versions.some(v => v.version === ui.version) ? ui.version : kb.version) + '</div><p class="field-error cs-form-error" role="alert" tabindex="-1"></p><div class="row">' + S.btn('检索', 'cs-retrieval', { attrs: attr(kb.id), icon: 'search' }) + '</div></form><div class="cs-retrieval-results">' + (result ? '<p class="small muted" role="status">v' + E(result.version) + ' · 命中 ' + result.total + ' 个片段，展示 ' + result.items.length + ' 个</p>' + (result.items.length ? result.items.map(item => '<article class="cs-hit"><div class="between"><strong>' + E(item.title) + '</strong><span class="mono">' + (item.score * 100).toFixed(0) + '%</span></div><p>' + E(item.text) + '</p><span class="small muted">第 ' + (item.chunkIndex + 1) + ' 段 · 命中：' + E(item.matchedTerms.join('、')) + '</span></article>').join('') : S.empty('没有达到条件的片段', '尝试修改查询、降低最低匹配度，或补充相关正文。')) : '<p class="small muted">输入问题并检索，结果会显示命中正文和对应版本。</p>') + '</div></section>';
+    return '<section class="panel cs-section"><div class="cs-section-heading"><div><h2>检索试验</h2><p>按保存的检索配置处理实际正文；向量与重排使用本地算法模拟，分数不代表真实模型质量。</p></div>' + S.badge('本地检索', 'info') + '</div><form id="cs-retrieval-form" data-form="cs-retrieval" novalidate>' + field('查询内容', 'cs-query', ui.query, '修改正文、分段参数或查询条件后，结果会相应变化。') + '<div class="cs-retrieval-options">' + field('返回条数', 'cs-topk', String(ui.topK), '1—20') + field('最低匹配度', 'cs-threshold', String(ui.threshold), '0—1') + select('资料版本', 'cs-version', (kb.versions || []).slice().reverse().map(v => ({ id: v.version, label: (v.version === kb.version ? '当前版本 v' : 'v') + v.version + ' · ' + v.reason })), kb.versions.some(v => v.version === ui.version) ? ui.version : kb.version) + '</div><p class="field-error cs-form-error" role="alert" tabindex="-1"></p><div class="row">' + S.btn('检索', 'cs-retrieval', { attrs: attr(kb.id), icon: 'search' }) + '</div></form><div class="cs-retrieval-results">' + (result ? '<p class="small muted" role="status">v' + E(result.version) + ' · '+E(result.mode)+' · 命中 ' + result.total + ' 个片段，展示 ' + result.items.length + ' 个</p>' + (result.items.length ? result.items.map(item => '<article class="cs-hit"><div class="between"><strong>' + E(item.title) + '</strong><span class="mono">' + (item.score * 100).toFixed(0) + '%</span></div><p>' + E(item.text) + '</p><span class="small muted">第 ' + (item.chunkIndex + 1) + ' 段 · 命中：' + E(item.matchedTerms.join('、')) + '</span></article>').join('') : S.empty('没有达到条件的片段', '尝试修改查询、降低最低匹配度，或补充相关正文。')) : '<p class="small muted">输入问题并检索，结果会显示命中正文和对应版本。</p>') + '</div></section>';
   }
   S.page('knowledge-detail', { title: '知识库详情', section: '资源', render() {
     const kb = C.getKnowledge(S.params.id); if (!kb) return S.empty('知识库不存在', '请从知识库列表重新选择。', S.btn('返回知识库', 'cs-knowledge-list', { variant: 'secondary' }));
@@ -344,7 +370,7 @@
   }
   function saveDocumentForm(form) {
     if (!form || !S.validate(form, { 'cs-doc-name': '请填写资料名称', 'cs-doc-content': '请填写资料正文' })) return;
-    const get = name => form.elements.namedItem(name).value;
+    const get = name => form.elements.namedItem(name)?.value||'';
     const doc = handle(form, () => C.addDocument(get('kbId'), { id: get('documentId') || undefined, name: get('cs-doc-name'), content: get('cs-doc-content') }));
     if (doc) { ui.results = null; S.toast('资料已保存并分段'); }
   }
@@ -367,7 +393,7 @@
   }
   function retrieve(form, kbId) {
     if (!form || !S.validate(form, { 'cs-query': '请输入查询内容', 'cs-topk': v => !/^\d+$/.test(v) || +v < 1 || +v > 20 ? '请输入 1—20 的整数' : null, 'cs-threshold': v => !v || !Number.isFinite(+v) || +v < 0 || +v > 1 ? '请输入 0—1 的数字' : null })) return;
-    const get = name => form.elements.namedItem(name).value;
+    const get = name => form.elements.namedItem(name)?.value||'';
     try { ui.query = get('cs-query'); ui.topK = +get('cs-topk'); ui.threshold = +get('cs-threshold'); ui.version = get('cs-version'); ui.results = { ...C.searchKnowledge(kbId, ui.query, { topK: ui.topK, scoreThreshold: ui.threshold, version: ui.version || undefined }), knowledgeId: kbId }; S.render(); } catch (error) { inlineError(form, error.message); }
   }
   function contentResults() {
@@ -383,7 +409,7 @@
   C.openContent = openContent;
   function saveContentForm(form) {
     if (!form || !S.validate(form, { 'cs-content-name': '请填写名称', 'cs-content-body': '请填写内容' })) return;
-    const get = name => form.elements.namedItem(name).value;
+    const get = name => form.elements.namedItem(name)?.value||'';
     const item = handle(form, () => C.saveContent({ id: get('recordId') || undefined, type: get('cs-content-type'), name: get('cs-content-name'), description: get('cs-content-description'), content: get('cs-content-body'), tags: get('cs-content-tags'), dependencies: get('cs-content-dependencies') }));
     if (item) { S.go('content-detail', { id: item.id }); S.toast('内容版本已保存'); }
   }

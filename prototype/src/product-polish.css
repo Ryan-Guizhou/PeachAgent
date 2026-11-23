@@ -24,3 +24,11 @@
 .storage-notice{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:12px 28px;background:var(--mint);color:var(--ink);border-bottom:1px solid var(--line);font-size:13px;line-height:1.6}.storage-notice[hidden]{display:none}.storage-notice .btn{flex-shrink:0}@media(max-width:760px){.storage-notice{align-items:flex-start;flex-direction:column;padding:12px 18px}}
 
 .product-row-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+/* Navigation owns its scroll surface; live run updates keep its DOM intact. */
+.nav-scroll{overscroll-behavior:contain;overflow-anchor:none;scrollbar-gutter:stable}
+.nav-item[hidden],.nav-count[hidden],.sidebar-status[hidden],.notification-dot[hidden]{display:none}
+.sidebar .brand,.sidebar .workspace-switch,.sidebar-status,.sidebar-profile{flex-shrink:0}
+.sidebar-profile .profile-avatar{border:0;cursor:pointer;flex-shrink:0}
+.sidebar-profile .profile-copy{min-width:0}.sidebar-profile .profile-copy>span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.auth-shell .sidebar,.auth-shell .sidebar-scrim,.auth-shell .topbar,.auth-shell .app-footer{display:none}
+.auth-shell .main-shell{margin-left:0}.auth-shell #page-content{max-width:none;padding:0;min-height:100vh}

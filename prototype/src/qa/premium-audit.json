@@ -3,7 +3,7 @@
     {
       "category": "violation",
       "file": "agent-studio.js",
-      "line": 87,
+      "line": 91,
       "message": "Enabled literal button has no detectable action or submit behavior.",
       "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
       "ruleId": "affordance.actionless-button",
@@ -12,7 +12,7 @@
     {
       "category": "violation",
       "file": "agent-studio.js",
-      "line": 92,
+      "line": 96,
       "message": "Enabled literal button has no detectable action or submit behavior.",
       "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
       "ruleId": "affordance.actionless-button",
@@ -21,7 +21,7 @@
     {
       "category": "violation",
       "file": "agent-studio.js",
-      "line": 234,
+      "line": 241,
       "message": "Enabled literal button has no detectable action or submit behavior.",
       "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
       "ruleId": "affordance.actionless-button",
@@ -30,7 +30,7 @@
     {
       "category": "violation",
       "file": "agent-studio.js",
-      "line": 237,
+      "line": 244,
       "message": "Enabled literal button has no detectable action or submit behavior.",
       "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
       "ruleId": "affordance.actionless-button",
@@ -39,7 +39,7 @@
     {
       "category": "violation",
       "file": "agent-studio.js",
-      "line": 253,
+      "line": 260,
       "message": "Enabled literal button has no detectable action or submit behavior.",
       "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
       "ruleId": "affordance.actionless-button",
@@ -120,16 +120,7 @@
     {
       "category": "violation",
       "file": "governance.js",
-      "line": 59,
-      "message": "Enabled literal button has no detectable action or submit behavior.",
-      "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
-      "ruleId": "affordance.actionless-button",
-      "severity": "error"
-    },
-    {
-      "category": "violation",
-      "file": "index.html",
-      "line": 26,
+      "line": 58,
       "message": "Enabled literal button has no detectable action or submit behavior.",
       "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
       "ruleId": "affordance.actionless-button",
@@ -147,7 +138,25 @@
     {
       "category": "violation",
       "file": "index.html",
-      "line": 31,
+      "line": 32,
+      "message": "Enabled literal button has no detectable action or submit behavior.",
+      "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
+      "ruleId": "affordance.actionless-button",
+      "severity": "error"
+    },
+    {
+      "category": "violation",
+      "file": "index.html",
+      "line": 34,
+      "message": "Enabled literal button has no detectable action or submit behavior.",
+      "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
+      "ruleId": "affordance.actionless-button",
+      "severity": "error"
+    },
+    {
+      "category": "violation",
+      "file": "models.js",
+      "line": 264,
       "message": "Enabled literal button has no detectable action or submit behavior.",
       "remediation": "Connect the button to a real action, make it a submit button, or disable/remove it.",
       "ruleId": "affordance.actionless-button",
@@ -183,7 +192,7 @@
     {
       "category": "violation",
       "file": "knowledge.js",
-      "line": 336,
+      "line": 362,
       "message": "Empty hash links look actionable but have no destination.",
       "remediation": "Use a real route/action or render non-interactive text.",
       "ruleId": "affordance.empty-href",
@@ -203,10 +212,10 @@
   "projectRoot": "prototype/src",
   "schemaVersion": 1,
   "summary": {
-    "errors": 22,
-    "total": 22,
+    "errors": 23,
+    "total": 23,
     "unresolved": 0,
-    "violations": 22,
+    "violations": 23,
     "warnings": 0
   }
 }
