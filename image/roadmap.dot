@@ -1,0 +1,26 @@
+digraph Roadmap {
+  graph [rankdir=TB, bgcolor="#FFFFFF", pad=0.35, nodesep=0.42, ranksep=0.32,
+    fontname="Noto Sans CJK SC", fontsize=21, fontcolor="#182B41",
+    label="PeachAgent · 分阶段交付路线", labelloc=t, labeljust=l];
+  node [shape=box, style="rounded,filled", fontname="Noto Sans CJK SC",
+    fontsize=14, color="#CBD5E1", fillcolor="#F5F7FB", fontcolor="#182B41",
+    margin="0.22,0.15", penwidth=1.1];
+  edge [color="#64748B", arrowsize=0.65, penwidth=1.2, fontname="Noto Sans CJK SC",
+    fontsize=11, fontcolor="#475569"];
+  confirmed [label="先确认本期需求\n范围 · 待决事项 · 验收依据", fillcolor="#182B41", fontcolor="#FFFFFF", color="#182B41"];
+  p1 [label="01  项目与对话\n模型配置 · 对话 · 历史 · 基础预算", fillcolor="#FFF0E7", color="#F2B38C"];
+  p2 [label="02  可视化工作流\n节点 · 变量 · 条件 · 版本 · 调试"];
+  p3 [label="03  Agent、Skill 与上下文\nMCP · 按需披露 · 规则 · 压缩"];
+  p4 [label="04  知识库与 RAG\n资料管理 · 检索比较 · 引用 · 人工基线"];
+  p5 [label="05  质量、Prompt 与成本\n固定样本 · 逐题对比 · 优化候选", fillcolor="#EAF5EF", color="#96BCA6"];
+  p6 [label="06  后续增强：确认后按需选择\n人工介入 · 长任务 · 协作 · 受控执行", style="rounded,dashed,filled", fillcolor="#F4F1FA", color="#B3A0CD"];
+  first [label="首个可运行成果\n阶段 1 验收通过", fillcolor="#FFF0E7", color="#F2B38C", fontsize=12];
+  core [label="首个完整核心版本\n阶段 1—5 全部核对通过", fillcolor="#EAF5EF", color="#96BCA6", fontsize=12];
+  confirmed -> p1;
+  p1 -> p2 -> p3 -> p4 -> p5;
+  p5 -> p6 [style=dashed, label="结合实际问题选择"];
+  { rank=same; p1; first; }
+  { rank=same; p5; core; }
+  p1 -> first [label="交付"];
+  p5 -> core [label="交付"];
+}
