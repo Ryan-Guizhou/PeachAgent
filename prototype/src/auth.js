@@ -185,7 +185,7 @@
 
   function workspaceStorageKey() {
     const session = getSession();
-    return session && !session.isDemo ? 'otryx-studio-workspace::' + session.accountId : LEGACY_WORKSPACE;
+    return window.StudioSpaces?.active()?.storageKey || (session && !session.isDemo ? 'otryx-studio-workspace::' + session.accountId : LEGACY_WORKSPACE);
   }
 
   function safeReturnHash(value) {
@@ -294,6 +294,7 @@
     return exclusive(async () => {
       const fields = validateCredentials(values);
       if (Object.keys(fields).length) throw fail('validation', '请检查标记的字段。', fields);
+      if (normalizeEmail(values.email) === 'demo@peachagent.local' && values.password === 'PeachAgent@2026') return enterDemo({ navigate: false });
       const account = readAccounts(true).find(item => item.email === normalizeEmail(values.email));
       const verifier = await derive(String(values.password), account?.salt || '00000000000000000000000000000000', account?.iterations || ITERATIONS);
       if (!account || !equalVerifier(verifier, account.verifier)) throw fail('credentials', '邮箱或密码不正确，请检查后重试。');
@@ -425,12 +426,12 @@
 
   function layout(title, description, content, active = 'login') {
     const session = getSession();
-    return `<div class="auth-page"><header class="auth-top">${brand()}<span class="auth-prototype-label">本地交互原型</span>${session ? '<a class="auth-back" href="#home">返回工作空间</a>' : `<a class="auth-back" href="#${active === 'register' ? 'login' : 'register'}">${active === 'register' ? '已有账户？登录' : '创建本地账户'}</a>`}</header><div class="auth-layout"><aside class="auth-intro" aria-label="工作空间介绍"><p class="eyebrow">YOUR AI WORKSPACE</p><h2>从一个想法，<br>到可运行的应用。</h2><p class="auth-intro-description">在同一个空间里构建智能体、编排工作流，<br class="auth-desktop-break">让每一次调用都可配置、可追踪、可改进。</p><div class="auth-feature-list"><div>${studio.icon('agent', 20)}<p><strong>让智能体完成任务</strong><span>配置模型、工具和协作方式。</span></p></div><div>${studio.icon('workflow', 20)}<p><strong>把过程编排清楚</strong><span>从节点传参到分支执行，逐步调试。</span></p></div><div>${studio.icon('code', 20)}<p><strong>将能力提供给业务</strong><span>发布应用与 API，持续检查质量。</span></p></div></div><p class="auth-intro-note">你的内容，保存在当前浏览器。<br>账户之间使用独立工作空间。</p></aside><section class="auth-card" aria-labelledby="auth-heading"><div class="auth-card-heading"><p class="auth-step-label">${active === 'register' ? '创建你的工作空间' : active === 'forgot-password' || active === 'reset-password' ? '找回访问方式' : active === 'session-expired' ? '会话状态' : '欢迎回来'}</p><h1 id="auth-heading" tabindex="-1">${studio.escape(title)}</h1><p>${studio.escape(description)}</p></div>${content}</section></div><footer class="auth-footer"><span>OTRYX Studio</span><span>本地演示账户 · 不连接身份服务 · 不发送邮件</span></footer></div>`;
+    return `<div class="auth-page"><header class="auth-top">${brand()}<span class="auth-prototype-label">本地交互原型</span>${window.StudioAppearance?.controls()||''}${session ? '<a class="auth-back" href="#home">返回工作空间</a>' : `<a class="auth-back" href="#${active === 'register' ? 'login' : 'register'}">${active === 'register' ? '已有账户？登录' : '创建本地账户'}</a>`}</header><div class="auth-layout"><aside class="auth-intro" aria-label="工作空间介绍"><p class="eyebrow">YOUR AI WORKSPACE</p><h2>从一个想法，<br>到可运行的应用。</h2><p class="auth-intro-description">在同一个空间里构建智能体、编排工作流，<br class="auth-desktop-break">让每一次调用都可配置、可追踪、可改进。</p><div class="auth-feature-list"><div>${studio.icon('agent', 20)}<p><strong>让智能体完成任务</strong><span>配置模型、工具和协作方式。</span></p></div><div>${studio.icon('workflow', 20)}<p><strong>把过程编排清楚</strong><span>从节点传参到分支执行，逐步调试。</span></p></div><div>${studio.icon('code', 20)}<p><strong>将能力提供给业务</strong><span>发布应用与 API，持续检查质量。</span></p></div></div><p class="auth-intro-note">你的内容，保存在当前浏览器。<br>账户之间使用独立工作空间。</p></aside><section class="auth-card" aria-labelledby="auth-heading"><div class="auth-card-heading"><p class="auth-step-label">${active === 'register' ? '创建你的工作空间' : active === 'forgot-password' || active === 'reset-password' ? '找回访问方式' : active === 'session-expired' ? '会话状态' : '欢迎回来'}</p><h1 id="auth-heading" tabindex="-1">${studio.escape(title)}</h1><p>${studio.escape(description)}</p></div>${content}</section></div><footer class="auth-footer"><span>OTRYX Studio</span><span>本地演示账户 · 不连接身份服务 · 不发送邮件</span></footer></div>`;
   }
 
   function loginPage() {
     const banner = flash ? `<div class="notice auth-flash" role="status">${studio.escape(flash)}</div>` : '';
-    return layout('登录工作空间', '继续你的应用、工作流和运行记录。', `${banner}<form data-form="auth-login" class="auth-form" novalidate>${formError()}${field('邮箱', 'email', { type: 'email', autocomplete: 'username', value: resetEmail, placeholder: 'name@example.com' })}${field('密码', 'password', { type: 'password', autocomplete: 'current-password', placeholder: '输入你的密码' })}<div class="auth-form-options">${rememberField()}<a href="#forgot-password">忘记密码？</a></div>${submit('登录')}</form><p class="auth-switch">还没有账户？<a href="#register">创建本地账户</a></p><div class="auth-divider"><span>先了解产品</span></div>${studio.btn('进入演示空间', 'auth-demo', { variant: 'secondary', icon: 'play' })}<p class="auth-local-note">无需注册即可体验已有示例。新建账户会使用独立空间。</p>`, 'login');
+    return layout('登录工作空间', '继续你的应用、工作流和运行记录。', `${banner}<form data-form="auth-login" class="auth-form" novalidate>${formError()}${field('邮箱', 'email', { type: 'email', autocomplete: 'username', value: resetEmail, placeholder: 'name@example.com' })}${field('密码', 'password', { type: 'password', autocomplete: 'current-password', placeholder: '输入你的密码' })}<div class="auth-form-options">${rememberField()}<a href="#forgot-password">忘记密码？</a></div>${submit('登录')}</form><p class="auth-switch">还没有账户？<a href="#register">创建本地账户</a></p><div class="auth-credential-demo" aria-label="演示账户"><div class="credential-row"><span class="credential-label">演示账号</span><strong>demo@peachagent.local</strong></div><div class="credential-row"><span class="credential-label">演示密码</span><strong>PeachAgent@2026</strong></div><button type="button" class="btn btn-ghost btn-sm" data-action="auth-fill-demo">填入演示账号</button></div><div class="auth-divider"><span>先了解产品</span></div>${studio.btn('进入演示空间', 'auth-demo', { variant: 'secondary', icon: 'play' })}<p class="auth-local-note">无需注册即可体验已有示例。新建账户会使用独立空间。</p>`, 'login');
   }
 
   function registerPage() {
@@ -521,6 +522,10 @@
       ['session-expired', '登录已失效', expiredPage]
     ];
     pages.forEach(([route, title, render]) => S.page(route, { title, section: 'auth', render, mount: mountAuth }));
+    S.action('auth-fill-demo', () => {
+      const email=document.getElementById('auth-email'),password=document.getElementById('auth-password');
+      if(email&&password){email.value='demo@peachagent.local';password.value='PeachAgent@2026';email.dispatchEvent(new Event('input',{bubbles:true}));password.dispatchEvent(new Event('input',{bubbles:true}));S.toast('已填入本地演示账号');}
+    });
     S.action('auth-demo', async () => {
       try { enterDemo(); } catch (error) {
         S.modal({ title: '暂时无法进入演示', body: `<div class="notice error">${S.escape(error.message)}</div>`, footer: S.btn('返回', 'modal-close', { variant: 'secondary' }) });
