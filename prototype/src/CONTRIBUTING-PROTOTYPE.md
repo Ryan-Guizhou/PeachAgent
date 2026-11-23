@@ -1,38 +1,35 @@
-# 原型模块接口与维护约定
+# 原型模块维护约定
 
-所有页面为普通 IIFE，在 `window.Studio` 注册，无 ES module 或外部依赖。
+源码开发须遵循[当期评审与交付规则](../../ci/README.md)：只展开当前 P1–P7 周期的需求与技术方案，经用户明确通过后开发。整体需求以[产品 PRD](../../requirements/PRD-PeachAgent.md)为准；现有原型能力和接口以代码及本目录契约为依据。
 
-## 加载顺序与责任
+## 加载与共享边界
 
-`core → runtime → workspace → builder → ecosystem → governance → capability-ui → trace → agent-studio`。
+所有页面为普通 IIFE，无 ES module 或外部前端依赖。完整加载顺序以 [index.html](index.html) 为准：外观、空间与账户模块先于 `core`；`runtime` 先于依赖它的业务模块。全部模块载入后，依次执行 `StudioAuth.attach`、`StudioSpaces.attach`、`StudioAppearance.attach`，再执行 `Studio.init`。
 
-- `core.js` 负责共享原语与兼容旧数据；不新增另一套执行器。
-- `runtime.js` 的 `Studio.Runtime` 是能力目录、图执行、审批、工具调用和事件的唯一入口。详细接口见 `RUNTIME-CONTRACT.md`。
-- `builder` 负责 `workflows/workflow`，不再负责任务详情。
-- `capability-ui` 负责 `capabilities/mcp/mcp-detail/plugins/plugin-detail`。
-- `trace` 负责 `tasks/task`，提供 `Studio.RunUI` 的状态、JSON、工具卡、审批与结果展示。
-- `agent-studio` 接管 `agent/chat` 路由及新的 `Studio.startRun`；工作台发起任务也进入统一 Agent 调用路径。
+- `core.js` 负责共享状态、路由、表单与旧数据兼容。
+- `Studio.Runtime` 是图执行、工具调用、审批和事件的共享入口；接口见 [RUNTIME-CONTRACT.md](RUNTIME-CONTRACT.md)。
+- `builder` 维护工作流；`capability-ui` 维护工具与连接；`trace` 维护运行详情；`agent-studio` 维护 Agent 与 Chat，页面间通过公开接口协作。
+- 模型、知识、服务与评测各有唯一状态来源，不能再创建复制相同配置的平行“资产”对象。
 
-## 共享界面原语
+## 界面与数据
 
-复用 `Studio.page/action/form/go/render/save`、`icon/escape/badge/btn/header/tabs/field/validate`、`modal/drawer/closeModal`、`toast/copy/download`。动作使用 `data-action`，由 `core.js` 的事件委托调用已注册 handler；不要添加虚假的内联 onclick 以迎合静态检查。
+复用 `Studio.page/action/form/go/render/save`、字段、弹窗、通知、复制与下载等共享原语。动作使用 `data-action` 事件委托，不添加空 `onclick` 掩盖静态检查结果。
 
-原生 select 是项目明确选择的控件，弹出层由浏览器管理。所有 form 使用 novalidate，textarea 使用 resize:none，输入保留 label/aria-label，数据必须 HTML 转义。模态导航统一关闭当前 dialog；未保存页面离开由 Studio.setDirty 管理。
+原生 select、`novalidate` 表单及应用内错误反馈沿用现有约定；输入保留 label／aria-label，用户内容必须 HTML 转义。未保存编辑通过 `Studio.setDirty` 管理，异步刷新不得覆盖当前编辑内容。具体行为见 [UX-CONTRACT.md](UX-CONTRACT.md)。
 
-样式只消费 `styles.css` 的语义令牌。功能 CSS 使用自己的前缀，不改变其它路由的页面滚动所有权。
+共享样式由 `styles.css` 提供，主题语义令牌和兼容覆盖由 `theme-engine.css` 提供。功能 CSS 使用自己的前缀，消费共享令牌；检查三主题表现，避免只针对亮色硬编码。不得改变其它路由的滚动容器归属。
 
-## 数据与版本
+## 执行、版本与保存
 
-- Graph Run、Tool Debug、Node Debug、Agent 均写入 `Studio.state.runs`，`engine:'graph'` 区分历史示例。
-- status、outcome.returnValue、outcome.receipts、outcome.artifacts 分离；不得用“有文件”判断任务是否成功。
-- 只有显式成果节点产生文件。节点内部输出默认只出现在执行记录中。
-- Agent 具体工具绑定使用 capabilityBindings；资源/Prompt/Skill/Workflow/子 Agent 使用 contextBindings。
-- 编辑草稿不得改写 publishedConfig 或已启动 Run 的 snapshot。
-- 其它页面改变 Agent 草稿后调用 `Studio.AgentStudio.invalidateDraft(id)`；改变流程草稿后调用 `Studio.Workflow.invalidateDraft(id)`。
-- 连接实时禁用、凭证失效和当前权限仍在每次调用检查；版本不匹配不能静默替换。
-- 测试场景必须明确为本地模拟；不发起外部业务请求、不保存真实密钥。
+- Agent、Workflow、Tool Debug、Node Debug、API 和评测复用共享执行路径，运行进入 `Studio.state.runs`。
+- 状态、返回值、操作回执与显式文件分别表达；只有明确的成果能力生成文件，内部节点输出不自动变成交付物。
+- 编辑草稿不改写已发布配置或已启动运行的快照。改变 Agent／工作流草稿时调用对应 `invalidateDraft`。
+- 连接禁用、凭据失效和当前权限逐次检查；固定版本缺失时明确失败，不静默替换。
+- 账户／空间 key 在启动时捕获；身份与空间切换重载，防止延迟保存串写。外观偏好与业务数据分别存储。
+- 外部能力明确标为本地模拟，不发业务网络请求，不保存真实密钥；存储失败必须保留可恢复反馈。
 
-## 重新验证
+## 验证与交付
 
-运行 `node qa/integration.cjs`、`python qa/verify-sources.py`、`python build.py`。
-测试结果不能代替真实浏览器视觉、焦点和响应式验收。当前限制见 `qa/verification.md`。
+从本目录执行 `node qa/integration.cjs`、`python qa/verify-sources.py`、`python build.py`。先生成检查所需的页面标记，再验证与构建。
+
+检查证据记录在 [qa/verification.md](qa/verification.md)，区分历史结果、本次结果与未覆盖范围。Node 契约、静态源码和页面标记不能代替真实浏览器验收。
