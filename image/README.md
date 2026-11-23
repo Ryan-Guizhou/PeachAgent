@@ -1,11 +1,27 @@
 # 文档图示
 
-当前图示用于解释产品需求与开发流程，不确定技术架构。技术架构图在需求确认并形成相应技术方案后补充。
+> 版本：v0.2 · 更新：2026-11-23 · 状态：产品规划、技术建议和交付流程图；不表示平台已经实现或部署。
 
-| 图片 | 可编辑源文件 | 用途 |
+图示以可编辑 DOT 源文件维护，SVG 用于 README 和文档内展示。精确的结构关系由图源生成，不使用生成式图片替代架构信息。功能验收以需求正文为准，技术细节以 technical 为准。
+
+| 图示 | 可编辑源文件 | 用途与关联 |
 |---|---|---|
-| [product-capabilities.svg](product-capabilities.svg) | [product-capabilities.dot](product-capabilities.dot) | 解释项目、应用、工具与知识、运行、质量和优化之间的产品关系 |
-| [roadmap.svg](roadmap.svg) | [roadmap.dot](roadmap.dot) | 展示六阶段交付及核心版本、后续增强的边界 |
-| [development-flow.svg](development-flow.svg) | [development-flow.dot](development-flow.dot) | 展示需求确认、Issue、PR、检查、main 与阶段核对的过程 |
+| [product-capabilities.svg](product-capabilities.svg) | [product-capabilities.dot](product-capabilities.dot) | 四域产品关系及个人租户/插件支撑；[产品架构](../requirements/06-product-architecture.md) |
+| [roadmap.svg](roadmap.svg) | [roadmap.dot](roadmap.dot) | 六期完整功能及第七期部署；[路线图](../requirements/02-roadmap.md) |
+| [development-flow.svg](development-flow.svg) | [development-flow.dot](development-flow.dot) | AI 模板、Issue/PR/main 和每期核对；[开发流程](../ci/README.md) |
+| [platform-architecture.svg](platform-architecture.svg) | [platform-architecture.dot](platform-architecture.dot) | 控制/执行/隔离、权威与派生数据；[技术总架构](../technical/01-platform-architecture.md) |
+| [plugin-lifecycle.svg](plugin-lifecycle.svg) | [plugin-lifecycle.dot](plugin-lifecycle.dot) | 动态升级、旧版本引用、撤权与卸载；[插件设计](../technical/02-plugin-runtime-and-ui.md) |
+| [public-review-flow.svg](public-review-flow.svg) | [public-review-flow.dot](public-review-flow.dot) | 私有副本、固定审核版本、公开和下架；[公共资源设计](../technical/05-public-repository-and-application-release.md) |
+| [deployment-layout.svg](deployment-layout.svg) | [deployment-layout.dot](deployment-layout.dot) | Compose 入口、内网服务、执行边界与挂载恢复；[部署设计](../technical/06-docker-compose-deployment.md) |
 
-SVG 用于文档展示；DOT 文件保存图的文字、连接关系和样式。更新图示时同时修改源文件与对应 SVG，并核对引用它的文档。图中所有能力均为规划，流程图也不表示已经配置自动化流水线。
+## 维护方式
+
+使用 Graphviz 将对应 DOT 渲染为 SVG，确保具备可显示中文的字体；当前图使用 Noto Sans CJK SC。更新图源与 SVG 后同时核对文档引用、标签和阶段归属，尤其不能恢复“阶段 6 可选”或“technical 仅占位”的旧口径。
+
+运行命令示例：
+
+```bash
+dot -Tsvg image/platform-architecture.dot -o image/platform-architecture.svg
+```
+
+生成命令仅维护文档图片，不构建应用或启动部署。图中的服务名称和端口属于拟定架构；正式参数由第七阶段交付包验证并锁定。
