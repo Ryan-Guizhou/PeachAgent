@@ -2,18 +2,18 @@
 
 ## Product context
 
-面向 AI 应用构建、发布和持续改进的浏览器本地高保真原型。zh-CN，时间按 Asia/Shanghai 展示。视觉采用亮色主题，基础键盘、焦点和状态反馈以 WCAG 2.2 AA 为设计目标；实际浏览器验收需单独进行。
+面向 AI 应用构建、发布和持续改进的浏览器本地高保真原型。支持三套主题及 zh-CN／en-US 核心界面切换，复杂编辑器和部分动态文案仍保留中文；时间按 Asia/Shanghai 展示。基础键盘、焦点和状态反馈以 WCAG 2.2 AA 为设计目标，实际浏览器验收需单独进行。
 
 ## Context sources
 
 | 领域 | 本目录依据 | 最近更新 |
 | --- | --- | --- |
-| 用户目标、页面归属、实现边界 | PRODUCT.md / PRODUCT-PLAN.md | 2026-11-23 |
-| 颜色、密度、组件所有权 | DESIGN.md / styles.css | 2026-11-23 |
+| 用户目标、页面归属、实现边界 | [产品 PRD](../../requirements/PRD-PeachAgent.md) / [原型说明](../README.md) | 2026-11-23 |
+| 颜色、密度、组件所有权 | DESIGN.md / THEME-I18N-DESIGN.md / styles.css / theme-engine.css | 2026-11-23 |
 | 执行、版本、发布与评测契约 | RUNTIME-CONTRACT.md / 当前模块代码 | 2026-11-23 |
 | 已执行检查与未验收范围 | qa/verification.md / qa 脚本 | 以实际记录为准 |
 
-本轮不从仓库外部产品文档引入未经用户确认的新限制。
+产品需求与排期统一由 PRD 管理；本契约记录当前原型的交互行为及验收目标，不代表正式服务已经实现。
 
 ## Canonical UI Map
 
@@ -29,6 +29,8 @@
 | Search | Studio.search / .search-field | core.js | 页面对象搜索、清除 | 内容测试中的 IME、分页和空态 |
 | Route | Studio.page / Studio.go | core.js | History API 管理的 hash 页面与详情 | navigation-contract DOM/history 模型与路由注册 |
 | Auth | StudioAuth | auth.js | 登录、注册、恢复、过期、账户弹窗 | auth-contract / navigation-contract |
+| Workspace | StudioSpaces | spaces.js | 默认空间、创建、重命名、切换 | appearance-contract 已定义；新增能力尚未完整回归 |
+| Appearance | StudioAppearance | appearance.js / theme-engine.css | 三主题、核心中英文、浏览器偏好 | appearance-contract 已定义；真实视觉及完整翻译待验收 |
 | Model selection | Studio.Models.selectionOptions / freezeBinding | models.js / model-bindings.js | 按类型与能力过滤，稳定 ID，原生 select | models-contract / model-integration |
 | Delegation | Studio.Planning | planning.js | 临时子 Agent、任务 DAG、模型池 | planning-contract 实际子运行与审批 |
 | Execution | Studio.Runtime | runtime.js / agent-studio.js | Agent、workflow、debug、API、eval | runtime-contract / product-integration |
@@ -36,7 +38,7 @@
 | Service/Key | Studio.Publishing | publishing.js | 所有者、调用方本地预览 | publishing-contract 申请、权限、状态 |
 | Quality | Studio.Quality | quality.js | 数据集、任务、结果、复核 | quality-contract 真实执行与规则评分 |
 
-各模块使用相同颜色令牌、按钮与字段语法，不另建平行的搜索、弹窗或通知组件。
+各模块使用相同颜色令牌、按钮与字段语法，不另建平行的搜索、弹窗或通知组件。三主题为 editorial-light、obsidian-dark、nordic-slate；主题和语言偏好在当前浏览器共享。代码、JSON 编辑区保持原文，核心双语不等于完整业务翻译。
 
 ## Navigation ownership
 
@@ -65,7 +67,9 @@
 
 登录是独立页面壳。注册、登录与恢复都有字段错误、提交状态、密码显隐和自动填充语义；允许密码管理器和粘贴。安全的站内返回路径保留必要对象参数，敏感输入不进入 URL。原有用户可直接进入演示空间。
 
-注册账户使用独立本地工作区；启动时捕获存储 key，登录、注册或退出后重载，防止过渡期把旧状态写到新账户。密码仅保存加盐验证器；演示重置码只在内存存活且有到期与一次使用规则。会话过期／退出停止活跃运行、评测与子计划，清理临时 Key；未保存编辑通过应用弹窗处理。
+注册账户有默认本地空间，可继续创建、重命名和切换空间；新空间带独立示例数据。业务状态按账户和空间保存，默认空间兼容旧数据。启动时捕获存储 key，身份或空间切换重载，防止过渡期串写。切换空间前检查未保存编辑并保存当前状态，切换时停止本地运行；当前不提供云同步、协作成员或服务端多租户授权。
+
+密码仅保存加盐验证器；演示重置码只在内存存活且有到期与一次使用规则。会话过期／退出停止活跃运行、评测与子计划，清理临时 Key；未保存编辑通过应用弹窗处理。语言切换会关闭弹窗并重新渲染，未保存编辑保护尚未覆盖该操作。
 
 计划先展示可编辑的临时子 Agent、依赖、输入输出、模型及权限，确认开始后冻结。自动分配只能使用允许模型池，手工选择仍检查类型与能力。临时对象不自动进入 Agent 列表；保存为草稿是单独动作。任务失败或审批拒绝不会显示全部成功；重复点击不重复执行，结束后的重试复制为新计划。
 
@@ -121,3 +125,4 @@
 运行、图、能力、跨模块、内容、发布和质量的契约由 `qa/` 的 Node 脚本验证；生成标记用于检查语法、语义令牌、控件标签、表单和动作绑定。具体执行结果见 `qa/verification.md`，不在此复制容易过期的测试数量。
 
 静态检查与 Node VM 渲染不是浏览器验收。真实点击、焦点、窄屏、拖动、原生选择框、下载、剪贴板、减少动效和视觉布局仍应在目标浏览器中验证；本契约不宣称这些检查已经完成。
+
