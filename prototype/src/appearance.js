@@ -73,6 +73,14 @@
    root.querySelectorAll('input[placeholder],textarea[placeholder]').forEach(el=>{
     if(labels[el.placeholder])el.placeholder=labels[el.placeholder];
    });
+  }else{
+   const inverse=Object.fromEntries(Object.entries(labels).map(([zh,en])=>[en,zh]));
+   const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+   const nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);
+   nodes.forEach(node=>{
+    if(node.parentElement?.closest('script,style,textarea,pre,code,kbd,[contenteditable],.mono,.code-editor,.auth-credential-demo'))return;
+    const raw=node.nodeValue,trimmed=raw.trim();if(inverse[trimmed])node.nodeValue=raw.replace(trimmed,inverse[trimmed]);
+   });
   }
   updateChrome();
  }
