@@ -1,7 +1,6 @@
-OTRYX Studio prototype validation — 2026-11-23 (Asia/Shanghai)
-Offline Node VM / static checks only; no browser visual or pointer verification.
-
 $ node qa/integration.cjs
+Auth contract: 96 assertions passed; 6 page states rendered.
+Navigation contract: 92 assertions passed using actual core/auth with a Node DOM/history model. No browser layout or native scroll verification claimed.
 PASS: 29 runtime contracts
   37 node families; six seeded graphs validate
   MCP input-sensitive result and protocol transcript
@@ -116,8 +115,46 @@ PASS 外部 API 运行可回流为可编辑评测样例，保留相同 Run 和 T
 PASS 业务 token/password 字段持久化保真，凭据所有者脱敏且容量失败可恢复
 PASS 资源市场发布和安装完整工作流图，MCP 模板只生成可管理的连接实例
 PASS: 7 product integration behavior groups
-PASS: all offline runtime, workflow, capability, content, publishing, quality and cross-module contracts.
+PASS legacy names migrate once with stable ids and capability declarations
+PASS type and capability errors reject invalid selectors without fallbacks
+PASS templates and request adapters keep rerank separate from OpenAI shape
+PASS provider CRUD persists references and drops credential bodies
+PASS all six model types save only typed config and explicit capabilities
+PASS rename aliases and deep frozen snapshots retain exact earlier config
+PASS defaults enforce type and referenced models cannot be deleted or retyped
+PASS stop/archive/restore do not silently change defaults or enable models
+PASS published API and quality snapshots prevent deletion even after source removal
+PASS moving a model cannot delete a provider still pinned by released snapshots
+PASS simulated tests and discovery record local outcomes and import idempotently
+PASS typed debug uses caller input and returns matching shapes without network
+PASS storage failure rolls CRUD back instead of losing previous config
+PASS unreferenced deletion and reload preserve saved edits and aliases
+PASS rendered routes and dialogs have escaped data and registered actions
+models-contract: 15 contracts passed; 64 actual rendered states -> /workspace/scratch/c67d9a2d291d/PeachAgent-prototype/prototype/src/qa/.generated/models-rendered.json
+PASS planning creates unique per-run Agents, an editable DAG, and no execution or permanent Agents
+PASS users explicitly expand the LLM pool, auto assignment varies models, manual override and snapshots persist
+PASS cycles, tool escalation, unavailable model capabilities, depth and budget excess are blocked
+PASS task CRUD updates dependencies, budgets, and explicit save creates only one reusable draft
+PASS shared Agent runtime executes temporary children in bounded parallelism and uses real dependency outputs
+PASS Agent Chat planning preserves session grants and execution from plan details stays linked to the conversation
+PASS create form navigates through loading and the mounted route refreshes after preparation or an error
+PASS model definitions remain frozen while live model disable blocks execution without fallback
+PASS children receive only authorized frozen tools and are unaffected by same-version live schema edits
+PASS write children wait for real approval; decline stops the parent and prevents downstream work
+PASS approved delivery can finish without a top-level return or file while retaining a real receipt
+PASS a failed child fails the coordinator and leaves downstream tasks unexecuted
+PASS stopping a plan or signing out recursively cancels pending approvals and does not launch queued children
+PASS markup has wired actions, accessible field labels, safe escaped content and recoverable empty/error states
 
+14 planning contracts passed; 16 actual HTML snapshots saved. Browser verification remains separate.
+PASS typed selectors and new workflow nodes use maintained defaults; foreign types cannot reuse a stale LLM snapshot
+PASS published Agent chat keeps model/provider revisions; explicit republishing refreshes its own model
+PASS new parent versions keep published child model revisions and historical workflow runs keep their original models
+PASS type and capability failures block before model usage; live disable blocks fixed Agent and node runs
+PASS knowledge maintains typed embedding/rerank settings and versions; retrieval actually produces frozen model stages
+PASS planning and model ownership are represented in shared chrome and Trace without fake rerun actions
+PASS: 6 cross-module model behavior groups; 6 rendered states. Browser verification remains separate.
+PASS: all 13 offline auth, navigation, runtime, workflow, capability, content, publishing, quality, model, planning and cross-module suites.
 
 Exit code: 0
 
@@ -126,19 +163,12 @@ PASS: JavaScript syntax for every application module.
 PASS: All CSS custom properties resolve to shared or component-owned tokens.
 PASS: CSS delimiter integrity (not a browser CSS parser).
 PASS: No native product dialog calls or uncontrolled eval.
-PASS: 133 rendered pages have unique IDs, label targets, named controls and app-owned forms.
+PASS: 225 rendered pages have unique IDs, label targets, named controls and app-owned forms.
 NOTE: These checks do not verify browser layout, pointer behavior or focus.
-
 
 Exit code: 0
 
 $ python build.py
-Created OTRYX_Studio.html (886,565 bytes).
-
+Created OTRYX_Studio.html (1,088,880 bytes).
 
 Exit code: 0
-
-$ frontend-design-premium audit_project.py prototype/src --mode strict
-Exit code: 1
-{"affordance.actionless-button": 20, "affordance.empty-href": 2}
-Known detector limits: delegated data-action handlers and dynamically assembled fragment URLs. Actual rendered control and nonempty-link checks passed. Browser interaction is not verified.

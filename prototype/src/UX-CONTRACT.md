@@ -23,11 +23,14 @@
 | Form | Studio.field / Studio.validate | core.js | 创建、编辑、配置；novalidate | 各模块契约与 verify-sources |
 | Scrollbar | 全局原生滚动条规则 | styles.css | 系统滚动、表格横向滚动 | 源码检查；实际窄屏滚动待浏览器验收 |
 | Toast | Studio.toast | core.js | success / info / warning / error | 注册与状态检查；不替代持久错误 |
-| CRUD | Studio.ContentStore / Studio.Quality / Studio.Publishing | knowledge.js / quality.js / publishing.js | 对象维护、归档恢复、版本保存 | knowledge-contract / quality-contract / publishing-contract |
+| CRUD | Studio.ContentStore / Studio.Quality / Studio.Publishing / Studio.Models | knowledge.js / quality.js / publishing.js / models.js | 对象维护、归档恢复、版本保存 | knowledge-contract / quality-contract / publishing-contract |
 | Dialog/Drawer | Studio.modal / Studio.drawer | core.js | 居中、宽版、右侧 | 渲染与动作检查；焦点恢复待浏览器验收 |
 | Save | Studio.save | core.js | 浏览器持久化、失败提示、导出备份 | product-integration 容量失败与恢复 |
 | Search | Studio.search / .search-field | core.js | 页面对象搜索、清除 | 内容测试中的 IME、分页和空态 |
-| Route | Studio.page / Studio.go | core.js | hash 页面与详情 | expanded-contract 内部路由注册 |
+| Route | Studio.page / Studio.go | core.js | History API 管理的 hash 页面与详情 | navigation-contract DOM/history 模型与路由注册 |
+| Auth | StudioAuth | auth.js | 登录、注册、恢复、过期、账户弹窗 | auth-contract / navigation-contract |
+| Model selection | Studio.Models.selectionOptions / freezeBinding | models.js / model-bindings.js | 按类型与能力过滤，稳定 ID，原生 select | models-contract / model-integration |
+| Delegation | Studio.Planning | planning.js | 临时子 Agent、任务 DAG、模型池 | planning-contract 实际子运行与审批 |
 | Execution | Studio.Runtime | runtime.js / agent-studio.js | Agent、workflow、debug、API、eval | runtime-contract / product-integration |
 | Content | Studio.ContentStore | knowledge.js | 知识、Prompt、Skill | knowledge-contract 正文、分段和版本 |
 | Service/Key | Studio.Publishing | publishing.js | 所有者、调用方本地预览 | publishing-contract 申请、权限、状态 |
@@ -37,12 +40,12 @@
 
 ## Navigation ownership
 
-- **构建与发布**：工作台、智能体、工作流、发布与 API。
-- **资源管理**：知识库、工具与连接、提示词与 Skills、资源市场。
+- **构建与发布**：工作台、智能体、工作流、协作计划、发布与 API。
+- **资源管理**：模型中心、知识库、工具与连接、提示词与 Skills、资源市场。
 - **运行与改进**：运行记录、用量与成本、质量评测；演示管理员可见公共发布审核。
-- **空间设置**：固定入口，包含模型、偏好与部署配置草案。
+- **空间设置**：固定入口，包含个人偏好与部署配置草案；旧模型标签只链接唯一模型中心。
 
-详情路由继承对应父导航状态。旧资产路由导向实际维护位置，MCP 不出现在知识正文列表。资源选择器可以跨来源引用，但只有对象的主入口可维护其配置。
+详情路由继承对应父导航状态。导航 DOM 与滚动容器在路由和后台刷新中保持；当前菜单重复点击不导航。程序化同 hash 刷新保留内容位置，不添加重复 history；同页 query 变更保留位置，前进后退恢复历史位置。旧资产路由导向实际维护位置，MCP 不出现在知识正文列表。资源选择器可以跨来源引用，但只有对象的主入口可维护其配置。
 
 ## List and dataset behavior
 
@@ -57,6 +60,14 @@
 评测导入必须先预览、映射字段并显示行错误与重复策略。导入源、格式、映射或数据集发生变化后旧预览失效。异步文件读取在关闭或新读取后不得覆盖当前表单。支持的导出按钮必须生成实际内容。
 
 应用 Key 明文只在签发／领取时展示一次；之后列表仅显示可识别的末尾字符、权限与状态。当前会话可在 Playground 使用内存凭据；刷新后不能找回明文。模型密钥输入关闭或保存时清空，MCP 配置仅使用凭证引用。发布请求日志不得包含 Key 正文。
+
+## Account and planning behavior
+
+登录是独立页面壳。注册、登录与恢复都有字段错误、提交状态、密码显隐和自动填充语义；允许密码管理器和粘贴。安全的站内返回路径保留必要对象参数，敏感输入不进入 URL。原有用户可直接进入演示空间。
+
+注册账户使用独立本地工作区；启动时捕获存储 key，登录、注册或退出后重载，防止过渡期把旧状态写到新账户。密码仅保存加盐验证器；演示重置码只在内存存活且有到期与一次使用规则。会话过期／退出停止活跃运行、评测与子计划，清理临时 Key；未保存编辑通过应用弹窗处理。
+
+计划先展示可编辑的临时子 Agent、依赖、输入输出、模型及权限，确认开始后冻结。自动分配只能使用允许模型池，手工选择仍检查类型与能力。临时对象不自动进入 Agent 列表；保存为草稿是单独动作。任务失败或审批拒绝不会显示全部成功；重复点击不重复执行，结束后的重试复制为新计划。
 
 ## Versions and async work
 
@@ -74,12 +85,16 @@
 
 评测结果区分规则通过／未通过、执行错误、保护阻断、未执行和人工复核。平均分只计算确有规则分数的样例；被阻断不显示零分或随机分数。比较任务时先确认同一样例与同一规则。规则通过率不称为真实语义质量。
 
-知识检索应显示正文来源、分段、版本与匹配依据，说明本地关键词模式。API Playground 同样明确本地模拟，模拟 202 接受不显示为业务完成。状态变化通过同一运行记录传递到日志和详情。
+知识检索应显示正文来源、分段、版本与匹配依据；分别说明关键词匹配或向量／重排本地模拟。模型配置随知识版本保存，真实模型服务未连接。API Playground 同样明确本地模拟，模拟 202 接受不显示为业务完成。状态变化通过同一运行记录传递到日志和详情。
 
 ## Flow ledger
 
 | 操作 | 触发与处理中 | 成功去向 | 失败或取消后的恢复 |
 | --- | --- | --- | --- |
+| 注册 / 登录 | 字段校验、密码校验或创建、提交防重 | 返回安全的站内目标／个人工作区 | 保留非敏感字段，清理密码并定位错误 |
+| 会话过期 / 退出 | 停止活跃运行、清理会话秘密 | 登录或过期页 | 未保存编辑可返回继续；失败不切错工作区 |
+| 维护模型 | 按类型校验参数、引用与连接 | 模型列表／详情／用途默认项 | 写入失败回滚；停用不静默替换引用 |
+| 自主规划 | 生成并审阅临时任务、分配模型与权限 | 执行 DAG、统一 Trace 与可选返回 | 阻断循环／越权，失败停止下游，明确复制后重试 |
 | 创建 Agent / 工作流 | 表单校验，保存草稿 | 对应列表／编辑器 | 保留字段并定位错误 |
 | 发布配置 | 校验图／配置、版本号 | 发布历史与可选来源 | 保留草稿和既有版本 |
 | 创建并上线服务 | 选择已发布来源、固定依赖 | 服务概览与接入页 | 显示缺失依赖，允许重新配置 |
