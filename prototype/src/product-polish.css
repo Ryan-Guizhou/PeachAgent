@@ -1,0 +1,26 @@
+/* Shared product surfaces: ordinary work, clear ownership and compact navigation. */
+.page-heading .eyebrow:empty{display:none}
+.product-workspace{display:grid;grid-template-columns:minmax(0,1fr) 292px;gap:24px;align-items:start}
+.product-workspace-main,.product-workspace-aside{display:grid;gap:22px;min-width:0}
+.product-panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.product-panel-head{padding:18px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line)}
+.product-panel-head h2{font-size:15px;margin:0}.product-panel-head p{margin:4px 0 0;font-size:12px;color:var(--muted)}
+.product-table-wrap{overflow-x:auto}.product-table{width:100%;border-collapse:collapse;font-size:13px;text-align:left}
+.product-table th{font-weight:500;color:var(--muted);font-size:12px;background:var(--bg);padding:11px 18px;white-space:nowrap}
+.product-table td{padding:15px 18px;border-top:1px solid var(--line);vertical-align:middle}.product-table tbody tr:hover{background:var(--bg)}
+.product-object{display:flex;gap:11px;align-items:center;min-width:190px}.product-object strong{display:block;font-weight:600}.product-object small{display:block;color:var(--muted);margin-top:4px;max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.product-object-icon{display:grid;place-items:center;width:32px;height:32px;border-radius:8px;background:var(--mint);color:var(--primary);flex-shrink:0}
+.product-actions{display:flex;justify-content:flex-end;gap:7px;align-items:center;white-space:nowrap}
+.product-aside-list{padding:3px 18px}.product-aside-item{padding:14px 0;border-bottom:1px solid var(--line)}.product-aside-item:last-child{border-bottom:0}.product-aside-item strong{font-size:13px;display:block}.product-aside-item p{margin:5px 0 9px;color:var(--muted);font-size:12px;line-height:1.65}
+.product-link-row{display:flex;align-items:center;gap:9px;padding:12px 0;border-bottom:1px solid var(--line);font-size:13px}.product-link-row:last-child{border:0}.product-link-row span{flex:1}.product-link-row:hover{color:var(--primary)}
+.product-small-note{font-size:12px;line-height:1.7;color:var(--muted);padding:14px 18px;margin:0}
+.resource-tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:0 0 22px;overflow:auto}.resource-tabs a{display:flex;align-items:center;gap:7px;padding:12px 16px;color:var(--muted);border-bottom:2px solid transparent;white-space:nowrap;font-size:13px}.resource-tabs a:hover{color:var(--primary);background:var(--mint)}.resource-tabs a[aria-current="page"]{color:var(--primary);font-weight:600;border-bottom-color:var(--primary)}
+.command-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border-radius:8px;font-size:13px}.command-item:hover{background:var(--mint)}.command-item small{color:var(--muted)}
+.cap-table-panel{min-height:240px}.cap-page .cap-invariant{margin-top:18px}.cap-page .cap-detail-top h1{font-size:25px}.cap-table-tool{max-width:380px}.cap-table-tool p{margin:4px 0 0;font-size:12px;line-height:1.6;color:var(--muted)}
+.product-result-hint{border-left:3px solid var(--primary);padding:12px 15px;background:var(--bg);font-size:12px;color:var(--muted);line-height:1.7;margin-top:16px}
+@media(max-width:1180px){.product-workspace{grid-template-columns:1fr}.product-workspace-aside{grid-template-columns:repeat(2,minmax(0,1fr))}.product-table td,.product-table th{padding-left:13px;padding-right:13px}}
+@media(max-width:760px){.product-workspace-aside{grid-template-columns:1fr}.product-table{min-width:620px}.product-panel-head{padding:15px}.resource-tabs a{padding:11px 12px}.product-actions{flex-wrap:wrap}.product-table .product-actions{flex-wrap:nowrap}}
+
+.storage-notice{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:12px 28px;background:var(--mint);color:var(--ink);border-bottom:1px solid var(--line);font-size:13px;line-height:1.6}.storage-notice[hidden]{display:none}.storage-notice .btn{flex-shrink:0}@media(max-width:760px){.storage-notice{align-items:flex-start;flex-direction:column;padding:12px 18px}}
+
+.product-row-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}

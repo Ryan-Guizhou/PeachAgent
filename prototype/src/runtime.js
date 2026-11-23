@@ -43,7 +43,7 @@
     ['N06','agent','Agent','智能处理','agent','调用已发布 Agent 的能力快照。',false,{agentId:'research',maxRounds:4,model:'DeepSeek Chat'},[field('agentId','Agent ID'),field('maxRounds','最大轮数','number'),field('model','模型')],{text:property('string','Agent 结果'),toolResults:property('array','工具结果')}],
     ['N07','classifier','问题分类','智能处理','filter','按明确标签选择出口；原型采用可见的关键词规则。',false,{labels:[{id:'research',label:'研究',keywords:['研究','分析']},{id:'writing',label:'写作',keywords:['写','文案']}],defaultLabel:'research'},[field('labels','分类规则','json'),field('defaultLabel','默认分类')],{label:property('string','命中的标签'),reason:property('string','可解释规则')}],
     ['N08','extract','参数提取','智能处理','code','按照字段 Schema 从 JSON 或键值文本提取参数。',false,{fields:[{name:'title',type:'string',required:true}],missingPolicy:'fail'},[field('fields','字段契约','json'),field('missingPolicy','缺失字段','select',['fail','null'])],{result:property('object','提取字段')}],
-    ['N09','knowledge','知识检索','知识与上下文','book','基于查询召回知识片段与来源。',false,{knowledge:'产品与行业知识库',topK:3,scoreThreshold:0.5,rerank:true},[field('knowledge','知识库'),field('topK','Top K','number'),field('scoreThreshold','最低分数','number'),field('rerank','重排','checkbox')],{items:property('array','召回片段'),total:property('integer','条数')}],
+    ['N09','knowledge','知识检索','知识与上下文','book','基于查询召回知识片段与来源。',false,{knowledge:'研究资料室',topK:3,scoreThreshold:0.5,rerank:true},[field('knowledge','知识库'),field('topK','Top K','number'),field('scoreThreshold','最低分数','number'),field('rerank','重排','checkbox')],{items:property('array','召回片段'),total:property('integer','条数')}],
     ['N10','document','文档提取','知识与上下文','file','从文件引用或示例文本提取内容，保留来源。',false,{format:'text',includeMetadata:true},[field('format','提取格式','select',['text','json']),field('includeMetadata','保留元信息','checkbox')],{text:property('string','文档正文'),metadata:property('object','文件信息')}],
     ['N11','memory','记忆读写','知识与上下文','layers','按作用域读取或写入本地示例记忆。',true,{mode:'read',scope:'agent',key:'preferences'},[field('mode','操作','select',['read','write']),field('scope','范围','select',['agent','conversation','tenant']),field('key','记忆键')],{value:property('object','记忆值')}],
     ['N12','mcp','MCP 工具','工具与集成','plug','绑定 MCP 连接和具体工具，按 Schema 传参。',false,{toolId:'web.search'},[field('toolId','工具 ID')],{result:property('object','结构化工具结果')}],
@@ -132,7 +132,16 @@
   R.getTool = id => R.tools.find(tool=>tool.id===id);
   R.getConnection = id => R.connections.find(connection=>connection.id===id);
   for(const type of ['mcp','plugin']){const def=R.nodeType(type);const tool=R.getTool(def.defaults.toolId);def.inputs=copy(tool.inputSchema);defaultBindings[type]=Object.fromEntries(Object.entries(tool.example).map(([key,value])=>[key,constant(value)]));if(type==='mcp')defaultBindings[type].query=ref('input.topic');}
-  R.testConnection = id => { const c=R.getConnection(id); if(!c) return {ok:false,error:'连接不存在'}; const ok=c.enabled!==false&&c.status!=='disabled'&&Boolean(c.endpoint)&&Boolean(c.credentialRef||c.authType==='none'); c.status=ok?'ready':c.enabled===false?'disabled':'auth_required';c.lastTest={at:Date.now(),ok,simulated:true,checks:[{name:'本地配置',ok:Boolean(c.endpoint)},{name:'凭据引用',ok:Boolean(c.credentialRef||c.authType==='none')},{name:'模拟能力发现',ok}]};S.save();return c.lastTest; };
+  R.inputSchemaFor=node=>{
+    if(['mcp','plugin'].includes(node.type))return R.getTool(node.config?.toolId)?.inputSchema;
+    if(node.type==='prompt'){
+      const c=node.config||{};let prompt=c.promptSnapshot;
+      if(!prompt){try{prompt=S.ContentStore?.getContent(c.promptId)?S.ContentStore.resolveContext({kind:'prompt',id:c.promptId,version:c.version}):R.prompts.find(p=>p.id===c.promptId);}catch(_){}}
+      if(prompt)return schema(Object.fromEntries((prompt.arguments||[]).map(a=>[a.name,{type:'string',description:a.description||a.name}])),(prompt.arguments||[]).filter(a=>a.required).map(a=>a.name));
+    }
+    return R.nodeType(node.type)?.inputs;
+  };
+  R.testConnection = id => { const c=R.getConnection(id); if(!c) return {ok:false,error:'连接不存在'};const configured=Boolean(c.endpoint||c.command),authorized=Boolean(c.credentialRef||c.authType==='none'),discovered=R.tools.some(t=>t.connectionId===c.id)||R.resources.some(r=>r.connectionId===c.id)||R.prompts.some(p=>p.connectionId===c.id); const ok=c.enabled!==false&&configured&&authorized&&discovered;c.status=ok?'ready':c.enabled===false?'disabled':!authorized?'auth_required':'unverified';c.lastTest={at:Date.now(),ok,simulated:true,checks:[{name:'本地配置',ok:configured},{name:'凭据引用',ok:authorized},{name:'本地模拟能力',ok:discovered}]};S.save();return c.lastTest; };
   R.refreshCapabilities = id => { const c=R.getConnection(id); if(!c) return {ok:false,error:'连接不存在'};const result={ok:c.enabled!==false&&c.status==='ready',simulated:true,at:Date.now(),tools:R.tools.filter(t=>t.connectionId===id).length,added:[],removed:[],changed:[]};c.lastDiscovery=result;S.save();return result; };
 
   R.validateSchema = function validate(value, definition, path) {
@@ -297,7 +306,7 @@
       if(['mcp','plugin'].includes(node.type)){
         const tool=R.getTool(c.toolId);if(!tool)add('TOOL_NOT_FOUND','请选择存在的具体工具。',node.id);else{const conn=R.getConnection(tool.connectionId);if(!conn||conn.enabled===false||conn.status!=='ready')warnings.push({nodeId:node.id,code:'CONNECTION_STATE',message:'连接未就绪，运行时会阻止该工具。'});(tool.inputSchema.required||[]).forEach(key=>{if(!Object.prototype.hasOwnProperty.call(node.bindings||{},key))add('REQUIRED_BINDING','工具必填参数未绑定：'+key,node.id);});for(const [key,value]of Object.entries(node.bindings||{})){if(value&&value.mode==='ref')continue;if(value&&['template','expression'].includes(value.mode))continue;const def=tool.inputSchema.properties[key];if(def){const errs=R.validateSchema(value&&value.mode==='constant'?value.value:value,def);errs.forEach(message=>add('INPUT_TYPE',key+'：'+message,node.id));}}}
       }
-      const inputContract=['mcp','plugin'].includes(node.type)?R.getTool(c.toolId)?.inputSchema:R.nodeType(node.type)?.inputs;
+      const inputContract=R.inputSchemaFor(node);
       if(inputContract){
         (inputContract.required||[]).forEach(key=>{if(!Object.prototype.hasOwnProperty.call(node.bindings||{},key)&&!['mcp','plugin'].includes(node.type))add('REQUIRED_BINDING','必填输入未绑定：'+key,node.id);});
         Object.entries(effectiveBindings).forEach(([key,binding])=>{
@@ -328,6 +337,52 @@
   };
   R.snapshot=flow=>copy({id:flow.id,title:flow.title,description:flow.description,version:flow.version,graphSchema:2,nodes:flow.nodes||[],edges:flow.edges||[],inputs:flow.inputs||{},inputSchema:flow.inputSchema,outputSchema:flow.outputSchema});
   R.publishedFlow=id=>{const flow=R.flows.find(f=>f.id===id);return flow&&flow.publishedSnapshot?copy(flow.publishedSnapshot):null;};
+  // 发布服务、离线评测与运行复用同一套依赖快照规则。
+  R.freezeWorkflow=(flow,options={})=>{
+    const snapshot=R.snapshot(flow),trail=options.trail||[],key='workflow:'+snapshot.id+'@'+snapshot.version;
+    if(trail.includes(key)||trail.length>=8)throw issue('DEPENDENCY_CYCLE','存在循环依赖或超过允许的依赖深度。');
+    const next={...options,trail:[...trail,key]};
+    const prepare=nodes=>{for(const node of nodes||[]){
+      const c=node.config=node.config||{};
+      if(node.type==='subflow'){
+        let dependency=c.resolvedSnapshot;
+        if(!options.preserveResolvedSnapshots&&(!dependency||options.refresh)){
+          const owner=R.flows.find(f=>f.id===c.flowId),versions=owner?[owner.publishedSnapshot,...(owner.versions||[])].filter(Boolean):[];
+          dependency=versions.find(v=>!c.version||v.version===c.version);
+        }
+        if(!dependency)throw issue('DEPENDENCY_SNAPSHOT_MISSING','子流程缺少可用的发布快照：'+(c.flowId||node.title));
+        if(c.version&&dependency.version!==c.version)throw issue('DEPENDENCY_VERSION','子流程快照版本不匹配：'+c.version);
+        c.resolvedSnapshot=R.freezeWorkflow(dependency,next);
+      }
+      if(node.type==='agent'){
+        let dependency=c.agentSnapshot;
+        if(!options.preserveResolvedSnapshots&&(!dependency||options.refresh)){const agent=S.state.agents.find(a=>a.id===c.agentId);dependency=agent?[agent.publishedConfig,...(agent.publishedVersions||[])].filter(Boolean).find(a=>!c.version||a.version===c.version):null;}
+        if(!dependency||dependency.status==='draft')throw issue('DEPENDENCY_SNAPSHOT_MISSING','Agent 节点需要已发布的配置快照：'+(c.agentId||node.title));
+        c.agentSnapshot=S.AgentStudio?.freezeSnapshot?S.AgentStudio.freezeSnapshot(dependency,next):copy(dependency);
+      }
+      if(node.type==='knowledge'&&c.knowledge&&S.ContentStore){
+        if(!c.knowledgeSnapshot||options.refresh){
+          if(options.preserveResolvedSnapshots)throw issue('KNOWLEDGE_SNAPSHOT_MISSING','知识节点缺少固定内容版本，请重新发布。');
+          c.knowledgeSnapshot=S.ContentStore.snapshotKnowledge(c.knowledge);
+        }
+        if(!c.knowledgeSnapshot)throw issue('KNOWLEDGE_NOT_FOUND','知识库不可用：'+c.knowledge);
+      }
+      if(['prompt','resource'].includes(node.type)){
+        const key=node.type==='prompt'?'promptSnapshot':'resourceSnapshot';
+        if(!c[key]||options.refresh){
+          if(options.preserveResolvedSnapshots)throw issue('CONTEXT_SNAPSHOT_MISSING','上下文节点缺少固定版本，请重新发布。');
+          const local=node.type==='prompt'&&S.ContentStore?.getContent(c.promptId);
+          const value=local?S.ContentStore.resolveContext({kind:'prompt',id:c.promptId,version:c.version}):(node.type==='prompt'?R.prompts:R.resources).find(item=>item.id===(c.promptId||c.resourceId)&&(!c.version||String(item.version)===String(c.version)));
+          if(!value)throw issue('CONTEXT_NOT_FOUND','上下文资源或版本不存在。');
+          c[key]=copy(value);
+        }
+      }
+      if(['mcp','plugin'].includes(node.type)&&c.toolId){const tool=R.getTool(c.toolId);if(tool&&!c.binding)c.binding={toolId:tool.id,connectionId:c.connectionId||tool.connectionId,version:tool.version,enabled:true,approval:tool.write?'write':'never'};}
+      if(c.body?.nodes)prepare(c.body.nodes);
+    }};
+    prepare(snapshot.nodes);return snapshot;
+  };
+
 
   function contextFor(run,provided) {return Object.assign({input:copy(run.inputs),sys:{run_id:run.id,tenant_id:'personal-demo'},nodes:{},workflow:{},conversation:{language:'zh-CN'},env:{default_language:'zh-CN'}},copy(provided||{}));}
   function executionFor(run,node,scope){const item={id:uid('node-exec'),traceId:run.traceId,spanId:hex(16),parentSpanId:run.spanId,nodeId:node.id,title:node.title,type:node.type,status:'running',startedAt:Date.now(),inputs:{},attempts:[],...(scope||{})};run.nodeExecutions.push(item);emit(run,'node.started',{nodeId:node.id,nodeExecutionId:item.id,title:node.title,type:node.type,...scope});return item;}
@@ -349,7 +404,7 @@
         const agent=S.state.agents.find(a=>a.id===c.agentId);if(!agent)throw issue('AGENT_NOT_FOUND','Agent 不存在。');const snapshot=c.agentSnapshot?copy(c.agentSnapshot):S.agentRuntime(agent);const bindings=(snapshot.capabilityBindings||[]).filter(b=>b.enabled!==false);const results=[];const goal=input.goal||ctx.input.topic||'分析当前信息';
         if(S.AgentStudio&&typeof S.AgentStudio.start==='function'){
           const childSnapshot=copy(snapshot);childSnapshot.executionPolicy={...(childSnapshot.executionPolicy||{}),maxRounds:Math.max(1,Number(c.maxRounds)||4)};
-          const child=S.AgentStudio.start({agentId:agent.id,snapshot:childSnapshot,goal:String(goal),mode:'execute',parentRunId:run.id,depth:(run.depth||0)+1});
+          const child=S.AgentStudio.start({agentId:agent.id,snapshot:childSnapshot,goal:String(goal),mode:'execute',parentRunId:run.id,depth:(run.depth||0)+1,preserveResolvedSnapshots:run.preserveResolvedSnapshots});
           if(!child)throw issue('AGENT_START','Agent 未能创建运行。');execution.childRunId=child.id;emit(run,'agent.child.started',{nodeId:node.id,nodeExecutionId:execution.id,childRunId:child.id,agentId:agent.id,version:snapshot.version});
           const unsubscribe=R.subscribe(changed=>{if(changed.id===child.id&&changed.status==='waiting'){run.pending={...copy(changed.pending),childRunId:child.id};run.status='waiting';emit(run,'agent.child.waiting',{nodeId:node.id,childRunId:child.id});}else if(changed.id===child.id&&run.pending?.childRunId===child.id&&changed.status!=='waiting'){run.pending=null;run.status='running';}});
           await R.waitForRun(child);unsubscribe();assertActive(run);if(child.status!=='done')throw issue('AGENT_FAILED','Agent 子运行未完成：'+(child.error||child.status));
@@ -363,7 +418,7 @@
       }
       case'classifier':{const text=String(input.text??ctx.input.topic??'');const matched=(c.labels||[]).find(label=>(label.keywords||[]).some(keyword=>text.includes(keyword)));return{label:matched?matched.id:c.defaultLabel,reason:matched?'命中示例关键词：'+(matched.keywords||[]).filter(k=>text.includes(k)).join('、'):'使用默认分类'};}
       case'extract':{const raw=input.text??input.value??'';let data;if(typeof raw==='object')data=raw;else{try{data=JSON.parse(raw);}catch(_){data={};String(raw).split(/[\n;,，；]/).forEach(line=>{const parts=line.split(/[:：]/);if(parts.length>1)data[parts.shift().trim()]=parts.join(':').trim();});}}const result={};for(const f of c.fields||[]){if(data[f.name]===undefined){if(f.required&&c.missingPolicy!=='null')throw issue('EXTRACT_MISSING','缺少字段：'+f.name);result[f.name]=null;}else{let value=data[f.name];if(['number','integer'].includes(f.type)&&typeof value==='string')value=Number(value);const errs=R.validateSchema(value,{type:f.type||'string'});if(errs.length)throw issue('EXTRACT_SCHEMA',errs.join('；'));result[f.name]=value;}}return{result};}
-      case'knowledge':{const query=String(input.query??ctx.input.topic??'');const count=Math.min(6,Math.max(1,Number(c.topK)||3));const empty=scenarioFor(run,node.id)==='empty'||query.includes('无结果');const items=empty?[]:Array.from({length:count},(_,i)=>({id:'snippet-'+(i+1),title:c.knowledge+' · '+query,text:'关于 '+query+' 的知识片段 '+(i+1),score:Number((0.94-i*.06).toFixed(2)),source:'knowledge://'+encodeURIComponent(c.knowledge||'default')+'/'+(i+1)})).filter(x=>x.score>=Number(c.scoreThreshold||0));return{items,total:items.length};}
+      case'knowledge':{const query=String(input.query??ctx.input.topic??'');if(scenarioFor(run,node.id)==='empty')return{items:[],total:0,mode:'local-keyword'};if(!S.ContentStore)return{items:[],total:0,mode:'unavailable',message:'未加载知识内容管理模块。'};const knowledge=c.knowledgeSnapshot||S.ContentStore.snapshotKnowledge(c.knowledge);if(!knowledge)throw issue('KNOWLEDGE_NOT_FOUND','请选择一个可用的知识库。');return S.ContentStore.searchSnapshot(knowledge,query,{topK:Number(c.topK)||3,scoreThreshold:Number(c.scoreThreshold)||0});}
       case'document':{const value=input.file??input.text??'';return{text:typeof value==='string'?value:value.content||'示例文件 '+(value.name||''),metadata:c.includeMetadata?{name:value.name||'输入文本',simulated:true}:{}};}
       case'memory':{const key=(c.scope||'agent')+':'+c.key;if(c.mode==='write'){S.state.capabilities.memory[key]=copy(input.value);emit(run,'memory.updated',{nodeId:node.id,key});}return{value:copy(S.state.capabilities.memory[key]??null)};}
       case'http':{if(!/^https?:\/\//.test(c.url||''))throw issue('HTTP_URL','URL 必须以 http:// 或 https:// 开头。');const status=Number(c.mockStatus||200);if(status>=400)throw issue('HTTP_ERROR','模拟 HTTP '+status);return{status,headers:{'content-type':'application/json'},body:{url:c.url,method:c.method,input:copy(input),simulated:true}};}
@@ -392,14 +447,14 @@
       case'control':{if(!ctx.__scope)throw issue('CONTROL_SCOPE','循环控制节点必须在容器内部。');ctx.__control=c.action;return{action:c.action};}
       case'human':{const approvedArgs=c.approveToolId?resolveMap(c.approveArgs||{},ctx):null;const decision=await requestApproval(run,{nodeId:node.id,nodeExecutionId:execution.id,title:c.title||node.title,description:c.description||'',fields:c.fields||[],preview:approvedArgs?{toolId:c.approveToolId,args:approvedArgs}:copy(input),kind:'input'});if(decision.approved&&approvedArgs){ctx.__writeApprovals=ctx.__writeApprovals||[];ctx.__writeApprovals.push({toolId:c.approveToolId,signature:JSON.stringify(approvedArgs),used:false});}return{approved:decision.approved,...decision.values};}
       case'subflow':{
-        const sub=c.resolvedSnapshot?copy(c.resolvedSnapshot):R.publishedFlow(c.flowId);if(!sub)throw issue('SUBFLOW_MISSING','子流程没有发布版本。');if(c.version&&sub.version!==c.version){const found=R.flows.find(f=>f.id===c.flowId)?.versions?.find(v=>v.version===c.version);if(!found)throw issue('SUBFLOW_VERSION','子流程版本不存在：'+c.version);Object.assign(sub,copy(found));}if((run.depth||0)>=4)throw issue('SUBFLOW_DEPTH','子流程最大嵌套深度为 4。');
-        const child=R.runWorkflow(sub,{inputs:copy(input),parentRunId:run.id,speed:run.speed,depth:(run.depth||0)+1,scenario:scenarioFor(run,node.id)});execution.childRunId=child.id;emit(run,'subflow.started',{nodeId:node.id,childRunId:child.id,version:sub.version});
+        const sub=c.resolvedSnapshot?copy(c.resolvedSnapshot):R.publishedFlow(c.flowId);if(!sub)throw issue('SUBFLOW_MISSING','子流程没有发布版本。');if(c.version&&sub.version!==c.version){if(run.preserveResolvedSnapshots)throw issue('DEPENDENCY_VERSION','固定子流程版本不匹配。');const found=R.flows.find(f=>f.id===c.flowId)?.versions?.find(v=>v.version===c.version);if(!found)throw issue('SUBFLOW_VERSION','子流程版本不存在：'+c.version);Object.assign(sub,copy(found));}if((run.depth||0)>=4)throw issue('SUBFLOW_DEPTH','子流程最大嵌套深度为 4。');
+        const child=R.runWorkflow(sub,{inputs:copy(input),parentRunId:run.id,speed:run.speed,depth:(run.depth||0)+1,scenario:scenarioFor(run,node.id),preserveResolvedSnapshots:run.preserveResolvedSnapshots});execution.childRunId=child.id;emit(run,'subflow.started',{nodeId:node.id,childRunId:child.id,version:sub.version});
         const unsubscribe=R.subscribe(changed=>{if(changed.id===child.id&&changed.status==='waiting'){run.pending={...copy(changed.pending),childRunId:child.id};run.status='waiting';emit(run,'subflow.waiting',{nodeId:node.id,childRunId:child.id});}else if(changed.id===child.id&&run.pending?.childRunId===child.id&&changed.status!=='waiting'){run.pending=null;run.status='running';}});
         await R.waitForRun(child);unsubscribe();if(child.status!=='done')throw issue('SUBFLOW_FAILED','子流程未完成：'+(child.error||child.status));return{result:copy(child.outcome.returnValue),childRunId:child.id};
       }
       case'wait':{if(c.mode==='event'){const response=await requestApproval(run,{kind:'input',nodeId:node.id,nodeExecutionId:execution.id,title:'等待事件 · '+(c.eventName||''),description:'提交可模拟关联事件到达。',fields:[]});if(!response.approved)throw issue('REJECTED','等待已取消。');return{event:response.values};}await delay(run,Math.min(2000,Math.max(0,Number(c.delayMs)||0)));assertActive(run);return{event:{resumed:true}};}
-      case'resource':{const resource=R.resources.find(r=>r.id===c.resourceId);if(!resource)throw issue('RESOURCE_MISSING','资源不存在。');const conn=R.getConnection(resource.connectionId);if(conn&&(conn.enabled===false||conn.status!=='ready'))throw issue('CONNECTION_DISABLED','资源连接未就绪。');return{text:resource.text,uri:resource.uri};}
-      case'prompt':{const prompt=R.prompts.find(p=>p.id===c.promptId);if(!prompt)throw issue('PROMPT_MISSING','Prompt 不存在。');const connection=R.getConnection(prompt.connectionId);if(connection&&(connection.enabled===false||connection.status!=='ready'))throw issue('CONNECTION_DISABLED','Prompt 连接未就绪。');for(const arg of prompt.arguments||[])if(arg.required&&input[arg.name]===undefined)throw issue('PROMPT_ARGUMENT','缺少 Prompt 参数：'+arg.name);const text=String(prompt.template).replace(/{{\s*([^{}]+?)\s*}}/g,(_,key)=>String(input[key.trim()]??''));return{messages:[{role:'user',content:text}]};}
+      case'resource':{const resource=c.resourceSnapshot||R.resources.find(r=>r.id===c.resourceId);if(!resource)throw issue('RESOURCE_MISSING','资源不存在。');const conn=R.getConnection(resource.connectionId);if(conn&&(conn.enabled===false||conn.status!=='ready'))throw issue('CONNECTION_DISABLED','资源连接未就绪。');return{text:resource.text,uri:resource.uri};}
+      case'prompt':{const prompt=c.promptSnapshot||(S.ContentStore?.getContent(c.promptId)?S.ContentStore.resolveContext({kind:'prompt',id:c.promptId,version:c.version}):R.prompts.find(p=>p.id===c.promptId&&(!c.version||String(p.version)===String(c.version))));if(!prompt)throw issue('PROMPT_MISSING','Prompt 不存在。');const connection=R.getConnection(prompt.connectionId);if(connection&&(connection.enabled===false||connection.status!=='ready'))throw issue('CONNECTION_DISABLED','Prompt 连接未就绪。');for(const arg of prompt.arguments||[])if(arg.required&&input[arg.name]===undefined)throw issue('PROMPT_ARGUMENT','缺少 Prompt 参数：'+arg.name);const text=String(prompt.template||prompt.content||'').replace(/{{\s*([^{}]+?)\s*}}/g,(_,key)=>String(input[key.trim()]??''));return{messages:[{role:'user',content:text}]};}
       case'answer':{const text=input.text??R.resolveBinding(template(c.template||''),ctx);if(ctx.__scope)ctx.__returnValue=text;else run.outcome.returnValue=text;emit(run,'answer.created',{nodeId:node.id,text});return{text};}
       case'output':{if(c.mode==='data'){const value=copy(input);if(ctx.__scope)ctx.__returnValue=value;else run.outcome.returnValue=value;return{value};}return{};}
       case'artifact':{const raw=input.content??input;const content=typeof raw==='string'?raw:JSON.stringify(raw,null,2);const artifact={id:uid('artifact'),name:c.filename||'result.txt',type:c.format||'Text',content,simulated:true,nodeId:node.id};run.outcome.artifacts.push(artifact);run.artifacts=run.outcome.artifacts;emit(run,'artifact.created',{nodeId:node.id,artifact:{id:artifact.id,name:artifact.name,type:artifact.type}});return{file:{id:artifact.id,name:artifact.name,type:artifact.type,size:content.length}};}
@@ -440,8 +495,13 @@
     return ctx;
   }
   R.runWorkflow=(flow,options)=>{
-    const o=options||{},snapshot=R.snapshot(flow);snapshot.nodes.forEach(node=>{if(node.type==='subflow'){const f=R.flows.find(f=>f.id===node.config?.flowId);const wanted=node.config?.version;const dep=wanted?(f?.versions||[]).find(v=>v.version===wanted)|| (f?.publishedSnapshot?.version===wanted?f.publishedSnapshot:null):f?.publishedSnapshot;if(dep)node.config.resolvedSnapshot=copy(dep);}if(node.type==='agent'){const a=S.state.agents.find(a=>a.id===node.config?.agentId);if(a)node.config.agentSnapshot=S.agentRuntime(a);}});const inputs={...(snapshot.inputs||{}),...Object.fromEntries(Object.entries(o.inputs||{}).filter(([,value])=>value!==undefined))};const run=R.createRun({title:o.title||snapshot.title,kind:o.parentRunId?'subworkflow':o.debug?'workflow-debug':'workflow',source:snapshot.title,version:snapshot.version,inputs,snapshot,parentRunId:o.parentRunId});run.workflowSnapshot=copy(snapshot);run.workflowId=snapshot.id;run.scenario=o.scenario||'success';run.speed=o.speed;run.depth=o.depth||0;run.breakpoints=copy(o.breakpoints||[]);const validation=R.validate(snapshot);run.validation=validation;
-    Promise.resolve().then(async()=>{try{if(!validation.valid)throw issue('GRAPH_INVALID',validation.errors.map(e=>e.message).join('；'));const ctx=contextFor(run,o.context);run.context=ctx;let executionFlow=snapshot;if(o.fromNode){if(!snapshot.nodes.some(n=>n.id===o.fromNode))throw issue('DEBUG_NODE','起始节点不存在。');const descendants=new Set();const walk=id=>{if(descendants.has(id))return;descendants.add(id);snapshot.edges.filter(e=>e.source===id).forEach(e=>walk(e.target));};walk(o.fromNode);executionFlow={...snapshot,nodes:snapshot.nodes.filter(n=>descendants.has(n.id)),edges:snapshot.edges.filter(e=>descendants.has(e.source)&&descendants.has(e.target))};run.fromNode=o.fromNode;emit(run,'debug.from_node',{nodeId:o.fromNode,upstreamSnapshot:copy(ctx.nodes)});}await executeGraph(run,executionFlow,ctx);R.completeRun(run);}catch(error){R.failRun(run,error);}});return run;
+    const o=options||{};let snapshot,preparationError;
+    try{snapshot=R.freezeWorkflow(flow,{preserveResolvedSnapshots:!!o.preserveResolvedSnapshots,refresh:!o.preserveResolvedSnapshots});}catch(error){snapshot=R.snapshot(flow);preparationError=error;}
+    const inputs={...(snapshot.inputs||{}),...Object.fromEntries(Object.entries(o.inputs||{}).filter(([,value])=>value!==undefined))};
+    const run=R.createRun({title:o.title||snapshot.title,kind:o.parentRunId?'subworkflow':o.debug?'workflow-debug':'workflow',source:snapshot.title,version:snapshot.version,inputs,snapshot,parentRunId:o.parentRunId});
+    run.workflowSnapshot=copy(snapshot);run.workflowId=snapshot.id;run.scenario=o.scenario||'success';run.speed=o.speed;run.depth=o.depth||0;run.breakpoints=copy(o.breakpoints||[]);run.preserveResolvedSnapshots=!!o.preserveResolvedSnapshots;
+    const validation=R.validate(snapshot);run.validation=validation;
+    Promise.resolve().then(async()=>{try{if(preparationError)throw preparationError;if(!validation.valid)throw issue('GRAPH_INVALID',validation.errors.map(e=>e.message).join('；'));const ctx=contextFor(run,o.context);run.context=ctx;let executionFlow=snapshot;if(o.fromNode){if(!snapshot.nodes.some(n=>n.id===o.fromNode))throw issue('DEBUG_NODE','起始节点不存在。');const descendants=new Set();const walk=id=>{if(descendants.has(id))return;descendants.add(id);snapshot.edges.filter(e=>e.source===id).forEach(e=>walk(e.target));};walk(o.fromNode);executionFlow={...snapshot,nodes:snapshot.nodes.filter(n=>descendants.has(n.id)),edges:snapshot.edges.filter(e=>descendants.has(e.source)&&descendants.has(e.target))};run.fromNode=o.fromNode;emit(run,'debug.from_node',{nodeId:o.fromNode,upstreamSnapshot:copy(ctx.nodes)});}await executeGraph(run,executionFlow,ctx);R.completeRun(run);}catch(error){R.failRun(run,error);}});return run;
   };
   R.testNode=(node,options)=>{const o=options||{},n=copy(node);if(o.inputs&&Object.keys(o.inputs).length)n.bindings=Object.fromEntries(Object.entries(o.inputs).map(([key,value])=>[key,constant(value)]));const run=R.createRun({title:'单节点 · '+node.title,kind:'node-debug',source:'工作流调试',inputs:o.context?.input||{},snapshot:{node:n},parentRunId:o.parentRunId});run.scenario=o.scenario||'success';run.speed=o.speed;Promise.resolve().then(async()=>{try{const ctx=contextFor(run,o.context);const result=await executeNode(run,n,ctx,{nodes:[n],edges:[]});R.completeRun(run,{returnValue:result.output});}catch(error){R.failRun(run,error);}});return run;};
 

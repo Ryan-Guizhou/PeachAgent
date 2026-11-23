@@ -10,7 +10,7 @@ python qa/verify-sources.py
 python build.py
 ```
 
-以上命令在 `prototype/src` 目录执行。`integration.cjs` 依次在独立 Node 进程执行四组测试；没有第三方依赖。跨模块检查会自动创建 `qa/.generated/expanded-rendered.json`，此目录已被 Git 忽略。`verify-sources.py` 使用 Python 标准库和 Node 语法检查，并读取同一快照；缺少快照时明确报错，要求先运行 integration，不会跳过 HTML 检查。源码与快照均按 UTF-8 读取，路径相对于脚本解析。
+以上命令在 `prototype/src` 目录执行。`integration.cjs` 依次在独立 Node 进程执行八组测试套件；没有第三方依赖。跨模块、知识、发布和质量检查会自动创建 `qa/.generated/*-rendered.json`，此目录已被 Git 忽略。`verify-sources.py` 使用 Python 标准库和 Node 语法检查，并读取全部生成快照；缺少快照时明确报错，要求先运行 integration，不会跳过 HTML 检查。源码与快照均按 UTF-8 读取，路径相对于脚本解析。
 
 ## 已通过的范围
 
@@ -21,13 +21,28 @@ python build.py
 | 工作流 UI | 6 个流程及 37 类节点 × 6 个检查器，共 228 个渲染变体通过 |
 | 能力 UI | 13 个路由/标签变体及 MCP/插件状态测试通过 |
 | 跨模块 | 78 个渲染状态、20 组行为检查通过 |
-| 可访问性基础静态检查 | 页面 ID 唯一，label 目标存在，控件有可访问名称，form 使用 novalidate |
+| 知识与内容 | 13 组行为、24 个页面／弹窗变体通过 |
+| 发布与 API | 17 组行为、10 个角色／页签变体通过 |
+| 质量评测 | 11 组行为、21 个页面／弹窗变体通过 |
+| 产品链路集成 | 7 组实际跨模块检查通过 |
+| 可访问性基础静态检查 | 133 份页面／弹窗标记检查；页面 ID 唯一，label 目标存在，控件有可访问名称，form 使用 novalidate |
 | 动作注册 | 渲染按钮有 data-action/明确操作，action/form/内部路由都能找到处理器 |
 | CSS | 自定义属性均有定义；括号和字符串完整性通过。没有声称用浏览器 CSS 引擎验证 |
-| 安全边界 | 未使用原生 alert/confirm/prompt 或任意 eval；用户文本保持 HTML 转义；密钥字段不序列化 |
+| 安全边界 | 未使用原生 alert/confirm/prompt 或任意 eval；用户文本保持 HTML 转义；密钥只在凭据所有者处清理，业务 JSON 的合法同名字段保真 |
 | 构建 | CSS/JS 内联，生成离线独立 HTML；无外部脚本/样式依赖 |
 
 ### 与用户最新要求直接相关的验证
+
+
+- 申请、审批、领取、停用、吊销、轮换与限额参与本地实际校验；Key 明文不进状态、日志或 URL，重载后只能使用已保存 Key 或轮换。
+- API 调用使用已发布快照，日志关联相同 Run 和 Trace；输入、鉴权、权限、额度错误均在执行前返回。
+- 评测集可增删改、真实导入导出、维护规则、保存版本；按实际逐条运行输出计算规则分数，支持停止、重试、复核和比较。
+- API 或普通运行能回流到可编辑评测样例，保留来源 Run 和 Trace；没有强制参考输出。
+- 用户维护的知识正文实际改变 Agent 和工作流结果；旧服务、旧评测与历史运行的知识、Prompt、Skill、子流程内容不漂移。
+- 非 topic 的中文 Prompt 参数支持 Workflow 变量绑定，以及 Agent 的 {{message}} 与固定值填参。
+- 已发布 Agent 不继承草稿专属字段；显式缺失的 Agent 不退回其它 Agent；未发布依赖不能成为对外服务的隐式来源。
+- 市场发布与安装保留真实工作流图；MCP 模板保存后只有一个管理对象，未配置能力时不显示已连接。
+- 业务 token/password 等字段持久化保真；存储失败持续提示并可导出备份，恢复后保存返回成功。
 
 - 纯条件分支可以成功完成，零回执、零返回、零文件。
 - 插件写入指定数据表后，输出节点可选择 none；状态为 done，保留操作回执，不生成文件。
@@ -59,11 +74,11 @@ python build.py
 
 已经运行技能的 strict audit，完整结果保留在 `qa/premium-audit.json`。
 
-仓库整理时仅将报告的 `projectRoot` 从开发环境绝对路径改为仓库相对路径 `prototype/src`，未重新执行静态审计；原有 findings、统计与行号保持不变。
+本轮重新执行了 strict audit。已修正 UX 合同中审计器要求的 Canonical UI Map 列名与所有权记录；没有关闭规则或修改审计器。完整报告中的项目根目录规范化为仓库相对路径 `prototype/src`，finding 与统计来自本次实际执行。
 
-在 `premium-ui.json` 明确原生 Select/Listbox 所有权后，没有 unresolved 类别；审计器仍报告 **22 条 affordance.actionless-button**。这些行中的按钮使用本项目已注册的 data-action + document 事件委托，审计器不能识别该架构，因此 strict 命令的退出码仍为 1。
+审计器仍报告 **20 条 affordance.actionless-button、2 条 affordance.empty-href**，strict 退出码为 1。这些源代码位置使用已注册的 `data-action` 事件委托，或由 route 参数拼成 fragment URL，审计器未解析它们。补充检查已验证实际渲染控件具有 handler、内部路由存在、链接非空，没有添加空 onclick 来掩盖报告。
 
-已使用真实页面渲染结果逐个验证按钮有操作，并检查注册表存在相应 handler。没有修改审计器、关闭规则或添加空 onclick 掩盖报告。这一补充验证不能替代真实浏览器点击验收。
+以上是静态识别限制的证据说明，不将 strict 结果表述为全绿，也不替代真实浏览器点击验收。
 
 ## 浏览器验收限制
 
@@ -73,4 +88,4 @@ python build.py
 
 ## 实现边界
 
-外部工具、模型响应、连接发现和协议内容来自本地模拟适配器；条件、参数和状态流转按图实际执行。扩展节点没有真实数据库、沙箱、Webhook 或定时服务。嵌套 body 和部分复杂配置使用高级 JSON；没有完整嵌套子画布。原有质量中心评分为示例，Sa-Token、后台队列、远端存储和 Compose 部署仍是后续工程范围。
+外部工具、模型响应、连接发现和协议内容来自本地模拟适配器；条件、参数和状态流转按图实际执行。扩展节点没有真实数据库、沙箱、Webhook 或定时服务。嵌套 body 和部分复杂配置使用高级 JSON；没有完整嵌套子画布。质量评分按用户维护的确定性规则计算，不代表真实语义质量，也没有接入 LLM 判分。API 网关、服务端身份与密钥管理、向量数据库、文档解析服务、后台队列和远端存储仍待后续实现。
