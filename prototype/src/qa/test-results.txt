@@ -1,3 +1,7 @@
+OTRYX Studio prototype validation — 2026-11-23 (Asia/Shanghai)
+Offline Node VM / static checks only; no browser visual or pointer verification.
+
+$ node qa/integration.cjs
 PASS: 29 runtime contracts
   37 node families; six seeded graphs validate
   MCP input-sensitive result and protocol transcript
@@ -27,12 +31,12 @@ PASS: 29 runtime contracts
   Conditional no-op success has zero effects, returned values, files; unused output refs are ignored
   Unavailable pinned tool version fails explicitly
   Legacy flow migration preserves both editable draft and published snapshot
-  Explicit partial parallel join retains healthy results and failed-source markers
+  Partial join retains failed-source markers; standalone Runtime does not fabricate knowledge without a content store
 PASS 228 workflow/37-node inspector render cases, all actions/forms/label targets, unique DOM ids.
 PASS graph draft copy/save/undo.
 PASS installed flow template binding and actual graph execution.
 PASS: capability binding invalidates actual Agent editor cache without modifying published configuration.
-PASS: 13 capability route/tab variants; all rendered actions/forms registered; 78659 chars rendered.
+PASS: 13 capability route/tab variants; all rendered actions/forms registered; 75832 chars rendered.
 PASS: shared debug execution, raw transcript/requestId, Agent draft binding without changing published snapshot.
 PASS: cloned connection tool dispatch, unauthenticated reference handling, live disable enforcement, plugin import/uninstall/reinstall.
 NOTE: Node VM behavior checks, not browser/visual/focus verification.
@@ -58,10 +62,83 @@ PASS: 20 integrated behavior groups; 78 render variants
   Final answer budget includes tool-result input tokens and refuses over-budget completion
   User-derived titles remain escaped
 NOTE: Node VM only. Browser rendering, pointer/focus/viewport verification is not claimed.
-PASS: all offline runtime, workflow, capability and cross-module contracts.
+PASS migration preserves real content and removes duplicate asset ownership
+PASS local Runtime Skills migrate with versioned bodies and keep connected resources in their owner
+PASS legacy placeholder cleanup leaves actual and user-created references intact
+PASS knowledge CRUD, local search parameters, and immutable revisions
+PASS chunk settings change actual segmentation while old snapshots remain usable
+PASS archive and reference tracking preserve published configurations
+PASS file import reads text, validates JSON, and does not fake unsupported or cancelled imports
+PASS Prompt and Skill versions, copy, and archived bindings are real user content
+PASS safe HTML, canonical routes, document preview, and data export
+PASS search, IME composition, empty recovery, and pagination reflect user-maintained data
+PASS market installs resolve to one owner and MCP stays an unconfigured template
+PASS public review freezes selected content versions and strips connection credentials
+PASS storage failure rolls back content changes and saved user data survives reload
+
+Knowledge/content contract: 13 scenarios passed; 24 rendered pages/dialogs captured.
+PASS: 17 publishing/API behavior groups; 10 page variants
+  Services only originate from published Agent or Workflow snapshots
+  Key is generated once, with only fingerprint and metadata persisted
+  Accepted API requests execute the frozen workflow and share Run/Trace identity
+  Run reads enforce app scope and the same end-user identity
+  Invalid credentials and schemas fail before a run, with no token retained in logs
+  Each Key is scoped to one app and explicit invoke/read permissions
+  Disabled/expired Keys and offline services reject new calls
+  Rotation immediately revokes the old Key without enlarging its expiry or scope
+  Minute and day limits reject repeat requests without dispatching duplicate runs
+  Request → review → narrowed grant → one-time claim is enforced across preview roles
+  Reject/cancel states have explicit reasons and cannot be processed twice
+  Reload retains only verifiable fingerprints, requiring a saved Key or rotation
+  Changing source drafts/releases does not mutate an existing service version; switching is explicit
+  Action-only workflows return success plus receipts, without manufactured outputs or files
+  Waiting runs remain observable and can be stopped with matching user and stop scope
+  Agent services dispatch the shared Agent pipeline with a published configuration snapshot
+  Both preview roles render all service tabs; docs and markup contain no plaintext Key
+NOTE: API gateway and identity authorization are local simulations; no network or production cryptographic service is provided.
+PASS: 样例增改删与类型校验，删除最后一条后历史版本保持不变
+PASS: 归档阻止编辑，恢复后继续维护
+PASS: CSV 引号/JSONL 行错误、预览、重复策略与真实导出
+PASS: 导入预览过期时阻止覆盖新修改
+PASS: 用户维护的数据在状态重载后保留
+PASS: 评测真实执行冻结版本与样例，输出变化决定规则得分
+PASS: 重试使用旧配置，人工复核独立于规则结果，并能逐样例比较
+PASS: 无返回值流程可按状态通过，不会被强制判成文件缺失
+PASS: 写工具在发送前受保护阻断，零写入回执且不虚构得分
+PASS: 运行输入与实际输出可回流为可编辑样例，保留追踪来源
+PASS: 停止保留未执行样例，规则变化时不显示误导性的比较分差
+PASS: 11 quality behavior groups; 21 render variants
+PASS 本地及 MCP 上下文在工作流和 Agent 中可执行，发布快照不随内容更新漂移
+PASS 服务与评测冻结嵌套工作流和 Agent 知识依赖，草稿依赖明确拒绝
+PASS 已发布 Agent 不继承草稿专属字段，显式不存在的 Agent 不回退
+PASS 用户维护的知识正文实际改变 Workflow 与 Agent 结果，历史运行保留原文
+PASS 外部 API 运行可回流为可编辑评测样例，保留相同 Run 和 Trace 来源
+PASS 业务 token/password 字段持久化保真，凭据所有者脱敏且容量失败可恢复
+PASS 资源市场发布和安装完整工作流图，MCP 模板只生成可管理的连接实例
+PASS: 7 product integration behavior groups
+PASS: all offline runtime, workflow, capability, content, publishing, quality and cross-module contracts.
+
+
+Exit code: 0
+
+$ python qa/verify-sources.py
 PASS: JavaScript syntax for every application module.
 PASS: All CSS custom properties resolve to shared or component-owned tokens.
 PASS: CSS delimiter integrity (not a browser CSS parser).
 PASS: No native product dialog calls or uncontrolled eval.
-PASS: 78 rendered pages have unique IDs, label targets, named controls and app-owned forms.
+PASS: 133 rendered pages have unique IDs, label targets, named controls and app-owned forms.
 NOTE: These checks do not verify browser layout, pointer behavior or focus.
+
+
+Exit code: 0
+
+$ python build.py
+Created OTRYX_Studio.html (886,565 bytes).
+
+
+Exit code: 0
+
+$ frontend-design-premium audit_project.py prototype/src --mode strict
+Exit code: 1
+{"affordance.actionless-button": 20, "affordance.empty-href": 2}
+Known detector limits: delegated data-action handlers and dynamically assembled fragment URLs. Actual rendered control and nonempty-link checks passed. Browser interaction is not verified.

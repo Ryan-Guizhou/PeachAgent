@@ -67,6 +67,7 @@ if snapshots.exists():
             self.controls = []
             self.forms = []
             self.buttons = []
+            self.links = []
             self.label_depth = 0
         def handle_starttag(self, tag, attrs):
             attr = dict(attrs)
@@ -78,6 +79,8 @@ if snapshots.exists():
                     self.labels.append(attr['for'])
             if tag in ('input','select','textarea') and attr.get('type') != 'hidden':
                 self.controls.append((tag, attr, bool(self.label_depth)))
+            if tag == 'a':
+                self.links.append(attr.get('href'))
             if tag == 'button':
                 self.buttons.append(attr)
             if tag == 'form':
@@ -89,7 +92,9 @@ if snapshots.exists():
             self.handle_starttag(tag, attrs)
             self.handle_endtag(tag)
     problems = []
-    pages = json.loads(snapshots.read_text(encoding='utf-8'))
+    pages = []
+    for snapshot_file in sorted(snapshots.parent.glob('*-rendered.json')):
+        pages.extend(json.loads(snapshot_file.read_text(encoding='utf-8')))
     for page in pages:
         parser = ControlParser()
         parser.feed(page['html'])
@@ -99,6 +104,9 @@ if snapshots.exists():
         for target in parser.labels:
             if target not in parser.ids:
                 problems.append((page['route'], 'missing label target', target))
+        for href in parser.links:
+            if href in ('', '#', None):
+                problems.append((page['route'], 'empty link target', href))
         for button in parser.buttons:
             if not ('data-action' in button or 'data-go' in button or 'disabled' in button or button.get('type') == 'submit'):
                 problems.append((page['route'], 'button without action', str(button)[:120]))

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#176B62">
-  <meta name="description" content="OTRYX Studio — 从想法到交付的个人 AI 工作室，高保真交互原型。">
+  <meta name="description" content="OTRYX Studio — 构建、发布和持续改进 AI 应用的工作空间，高保真交互原型。">
   <title>工作台 · OTRYX Studio</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='18' fill='%23176B62'/%3E%3Cpath d='M20 20h15a12 12 0 0 1 0 24H20V20Zm24 0v24' fill='none' stroke='white' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="styles.css">
@@ -14,6 +14,10 @@
   <link rel="stylesheet" href="capability-ui.css">
   <link rel="stylesheet" href="agent-studio.css">
   <link rel="stylesheet" href="trace.css">
+  <link rel="stylesheet" href="knowledge.css">
+  <link rel="stylesheet" href="publishing.css">
+  <link rel="stylesheet" href="quality.css">
+  <link rel="stylesheet" href="product-polish.css">
 </head>
 <body>
   <a class="skip-link" href="#page-content">跳转到主要内容</a>
@@ -22,8 +26,9 @@
     <button class="sidebar-scrim" data-action="toggle-sidebar" aria-label="关闭导航" type="button"></button>
     <div class="main-shell">
       <header class="topbar" id="topbar"></header>
+      <div id="storage-notice" class="storage-notice" role="status" hidden><span>当前浏览器无法保存数据。本次修改只保留在当前会话，请导出备份后再释放存储空间。</span><button type="button" class="btn btn-secondary btn-sm" data-action="product-export-state">导出备份</button></div>
       <main id="page-content" tabindex="-1"></main>
-      <footer class="app-footer"><span><i class="tiny-dot"></i> 本地演示已就绪</span><span>OTRYX Studio <span class="footer-sep">/</span> 让每个想法都有下一步</span><button type="button" data-action="help">交互指南</button></footer>
+      <footer class="app-footer"><span><i class="tiny-dot"></i> 本地演示已就绪</span><span>OTRYX Studio <span class="footer-sep">/</span> 本地交互原型</span><button type="button" data-action="help">交互指南</button></footer>
     </div>
   </div>
   <dialog id="app-dialog" aria-labelledby="dialog-title"></dialog>
@@ -36,8 +41,11 @@
   <script src="ecosystem.js"></script>
   <script src="governance.js"></script>
   <script src="capability-ui.js"></script>
+  <script src="knowledge.js"></script>
   <script src="trace.js"></script>
   <script src="agent-studio.js"></script>
+  <script src="publishing.js"></script>
+  <script src="quality.js"></script>
   <script>window.addEventListener('DOMContentLoaded', function () { Studio.init(); });</script>
 </body>
 </html>
