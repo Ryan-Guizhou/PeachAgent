@@ -64,7 +64,7 @@
   const data = () => S.state.modelRegistry;
   const rawModel = value => { const key = typeof value === 'object' ? value?.id : value; return data().models.find(m => m.id === key) || data().models.find(m => m.name === key || (m.aliases || []).includes(key)); };
   const provider = id => data().providers.find(p => p.id === id);
-  const available = m => Boolean(m && m.enabled !== false && !m.archived && provider(m.providerId)?.enabled !== false && !provider(m.providerId)?.archived && provider(m.providerId));
+  const available = m => Boolean(m && m.enabled !== false && !m.archived && provider(m.providerId)?.enabled !== false && !provider(m.providerId)?.archived && provider(m.providerId) && S.Credentials?.isUsable('model',provider(m.providerId)?.credentialRef)!==false);
   const hasCaps = (m, needed = []) => needed.every(c => m.capabilities?.[c] === true);
   function syncLegacy() {
     S.state.models = data().models.map(m => ({ id: m.id, name: m.name, provider: provider(m.providerId)?.name || '连接已删除', type: types[m.type], modelType: m.type, endpoint: provider(m.providerId)?.baseUrl || '', status: available(m) ? 'connected' : 'disabled', capabilities: copy(m.capabilities), archived: !!m.archived }));
@@ -102,6 +102,7 @@
     if (options.enabled !== false) {
       if (m.enabled === false || m.archived) fail('MODEL_DISABLED', `“${m.name}”已停用或归档，请启用后再运行。`);
       const p = provider(m.providerId); if (!p || p.enabled === false || p.archived) fail('PROVIDER_DISABLED', `“${m.name}”的服务商连接不可用，请在模型中心检查。`);
+      S.Credentials?.assertUsable('model',p.credentialRef);
     }
     return copy(m);
   }
@@ -117,6 +118,8 @@
       if (!hasCaps(value, options.capabilities)) fail('MODEL_CAPABILITY_MISMATCH', '此运行固定的模型快照缺少所需能力。');
       if (value.providerId !== current.providerId && !provider(value.providerId)) fail('PROVIDER_DISABLED', '运行固定的服务商连接已不存在。');
       const original = provider(value.providerId); if (!original || !original.enabled || original.archived) fail('PROVIDER_DISABLED', '运行固定的服务商连接已停用或归档。');
+      S.Credentials?.assertUsable('model',original.credentialRef);
+      S.Credentials?.assertUsable('model',value.provider?.credentialRef);
     }
     return current;
   }
@@ -125,7 +128,7 @@
   }
   const integer = (v, min, max, label) => { const n = Number(v); if (!Number.isInteger(n) || n < min || n > max) fail('CONFIG_INVALID', `${label}需为 ${min}–${max} 的整数。`); return n; };
   const decimal = (v, min, max, label) => { const n = Number(v); if (!Number.isFinite(n) || n < min || n > max) fail('CONFIG_INVALID', `${label}需在 ${min}–${max} 之间。`); return n; };
-  function saveProvider(input) {
+  function providerValue(input) {
     const old = input.id ? provider(input.id) : null; if (input.id && !old) fail('PROVIDER_NOT_FOUND', '连接不存在。');
     const name = String(input.name || '').trim(), baseUrl = String(input.baseUrl || '').trim().replace(/\/$/, '');
     if (!name) fail('CONFIG_INVALID', '请填写连接名称。');
@@ -135,6 +138,10 @@
     const credentialRef = String(input.credentialRef || '').trim();
     if (credentialRef && !/^(env|vault|secret):[a-zA-Z][a-zA-Z0-9_./-]{0,119}$/.test(credentialRef)) fail('CREDENTIAL_REFERENCE_INVALID', '只接受 env:变量名、vault:路径 或 secret:标识。不要填写密钥正文。');
     const value = { id: old?.id || uid('provider'), name, template: input.template, protocol: input.protocol, baseUrl, auth: input.auth, credentialRef: input.auth === 'none' ? '' : credentialRef, apiVersion: String(input.apiVersion || '').trim().slice(0,80), timeoutMs: integer(input.timeoutMs ?? 60000, 1000, 300000, '超时毫秒'), retries: integer(input.retries ?? 1, 0, 5, '重试次数'), enabled: input.enabled !== false, archived: old?.archived || false, revision: (old?.revision || 0) + 1, validation: null, createdAt: old?.createdAt || now(), updatedAt: now() };
+    return value;
+  }
+  function saveProvider(input) {
+    const value = providerValue(input);
     return mutate(d => { const i = d.providers.findIndex(p => p.id === value.id); if (i >= 0) d.providers[i] = value; else d.providers.push(value); return value; });
   }
   function normalConfig(type, cfg) {
@@ -168,6 +175,15 @@
   function saveModel(input) {
     const value = modelValue(input);
     return mutate(d => { const i = d.models.findIndex(m => m.id === value.id); if (i >= 0) d.models[i] = value; else d.models.push(value); return value; });
+  }
+  function importTemplate(model, connection, name, origin) {
+    // One transaction; do not import an authorization or a live connection.
+    return mutate(d => {
+      const p=providerValue({...connection,id:undefined,name:(name||model.name)+' · 连接',credentialRef:'',auth:'reference',enabled:false});
+      d.providers.push(p);
+      const m=modelValue({...model,id:undefined,name:name||model.name,providerId:p.id,enabled:false,declaration:'跨项目固定配置副本；请重新配置凭证并启用'});
+      m.origin=copy(origin);d.models.push(m);return m;
+    });
   }
   function dependencies(id) {
     const m = rawModel(id); if (!m) return [];
@@ -216,11 +232,13 @@
     if (!['success','timeout','unauthorized'].includes(scenario)) fail('CONFIG_INVALID', '未知的连接校验场景。');
     const p = provider(id); if (!p) fail('PROVIDER_NOT_FOUND', '连接不存在。'); if (!p.enabled || p.archived) fail('PROVIDER_DISABLED', '连接已停用或归档。');
     if (!checkUrl(p.baseUrl)) fail('CONFIG_INVALID', '连接地址格式不正确。');
+    S.Credentials?.assertUsable('model',p.credentialRef);
     const result = { status: scenario === 'timeout' ? 'timeout' : scenario === 'unauthorized' ? 'unauthorized' : 'passed', simulated: true, testedAt: now(), message: scenario === 'timeout' ? '模拟超时；可调整超时或重试。' : scenario === 'unauthorized' ? '模拟凭证被拒绝；请检查引用配置。' : '地址与配置校验通过；真实服务连通性尚未验证。' };
     return mutate(d => { d.providers.find(x => x.id === id).validation = result; return result; });
   }
   function discover(id) {
     const p = provider(id); if (!p || !p.enabled || p.archived) fail('PROVIDER_DISABLED', '请先启用服务商连接。');
+    S.Credentials?.assertUsable('model',p.credentialRef);
     const candidates = p.protocol === 'anthropic' ? ['llm'] : p.protocol === 'ollama' ? ['llm','embedding'] : ['cohere','jina','voyage'].includes(p.protocol) ? (p.protocol === 'cohere' ? ['llm','embedding','rerank'] : ['embedding','rerank']) : p.protocol === 'custom' ? Object.keys(types) : ['llm','embedding'];
     return candidates.map(type => ({ providerId: id, type, name: p.name + ' · ' + types[type] + '示例', modelId: 'discovered-demo-' + type, adapter: recommendedAdapter(p.protocol,type) || 'custom-http', requestPath: p.protocol === 'custom' ? '/demo/' + type : '', capabilities: Object.fromEntries(Object.keys(caps).map(c => [c,false])), config: typeConfig(type), enabled: true, simulated: true, imported: data().models.some(m => m.providerId === id && m.modelId === 'discovered-demo-' + type && m.type === type) }));
   }
@@ -244,7 +262,7 @@
     const record = { id: uid('model-test'), modelId: m.id, modelName: m.name, modelType: m.type, snapshot: snap, input: copy(input), output: error ? null : output, error, status: error ? 'failed' : 'succeeded', createdAt: now(), durationMs: Math.max(1,now()-started), simulated: true };
     return mutate(d => { d.debugRuns.unshift(record); d.debugRuns = d.debugRuns.slice(0,100); return record; });
   }
-  S.Models = { types: freeze(copy(types)), adapters: freeze(copy(adapters)), templates: freeze(copy(templates)), list, resolve, validate, snapshot, assertAvailable, defaults, setDefault, displayName: value => rawModel(value)?.name || (typeof value === 'string' ? value : value?.name || '未选择模型'), saveProvider, saveModel, setStatus, remove, dependencies, references: dependencies, providerReferences, testConnection, discover, importDiscovered, debug, providers: () => copy(data().providers), recommendedAdapter, typeConfig: type => copy(typeConfig(type)), openModel, openProvider };
+  S.Models = { types: freeze(copy(types)), adapters: freeze(copy(adapters)), templates: freeze(copy(templates)), list, resolve, validate, snapshot, assertAvailable, defaults, setDefault, displayName: value => rawModel(value)?.name || (typeof value === 'string' ? value : value?.name || '未选择模型'), saveProvider, saveModel, importTemplate, setStatus, remove, dependencies, references: dependencies, providerReferences, testConnection, discover, importDiscovered, debug, providers: () => copy(data().providers), recommendedAdapter, typeConfig: type => copy(typeConfig(type)), openModel, openProvider };
 
   const ui = { q: '', providerQ: '', discovery: null, pending: null, debugInput: {}, debugResult: {}, modelDraft: null, providerDraft: null };
   const attrs = (id, extra = '') => `data-id="${E(id)}" ${extra}`;

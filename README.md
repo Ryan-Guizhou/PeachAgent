@@ -5,6 +5,8 @@
 <!-- doc-section:overview -->
 ## 面向完整任务的 Agent 开发平台
 
+PeachAgent 是平台名称，OTRYX Studio 是当前控制台原型名称。
+
 PeachAgent 面向个人开发者，连接 Agent/工作流设计、受控执行、知识检索、质量评测、资源复用和应用发布。每位用户拥有独立租户，可在多个工作空间中管理项目，自行配置模型和工具凭证。
 
 **当前可体验的是 OTRYX Studio 浏览器交互原型。** 真实服务端、正式模型/工具接入和可部署 Compose 包尚未交付；七个正式产品开发周期均待当期技术评审。原型演示与产品验收分别记录。
@@ -31,7 +33,7 @@ python3 -m http.server 8080 --directory prototype
 
 也可下载 [OTRYX_Studio.html](prototype/OTRYX_Studio.html) 后直接用浏览器打开；GitHub 文件页本身显示的是源代码。
 
-建议依次体验空间切换、模型管理、工作流与 Agent、运行追踪、数据集评测和应用发布/API Key。原型提供三套主题及核心中英切换，业务数据保存在本地浏览器；外部调用、凭证和费用采用模拟数据。详细边界与验证状态见[原型说明](prototype/README.md)。
+建议依次体验空间与项目切换、固定版本资源副本、模型与凭证管理、工作流与 Agent、待办审批、运行追踪、数据集评测、应用发布/API Key 和市场审核。原型提供三套主题及核心中英切换，业务数据保存在本地浏览器；外部调用、凭证和费用采用模拟数据。详细边界与验证状态见[原型说明](prototype/README.md)。
 
 <!-- doc-section:architecture -->
 ## 产品如何组织

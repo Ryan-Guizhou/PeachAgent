@@ -3,7 +3,9 @@
 [简体中文](README.md) | [English](README_EN.md)
 
 <!-- doc-section:overview -->
-## An Agent platform for complete tasks
+## Agent development platform for complete tasks
+
+PeachAgent is the platform name; OTRYX Studio is the current console prototype name.
 
 PeachAgent connects Agent and workflow design, controlled execution, knowledge retrieval, evaluation, reusable resources, and application publishing for individual developers. Each user has an independent tenant with multiple workspaces and projects, and configures their own model and tool credentials.
 
@@ -31,7 +33,7 @@ Open [http://localhost:8080/src/index.html](http://localhost:8080/src/index.html
 
 Alternatively, download [OTRYX_Studio.html](prototype/OTRYX_Studio.html) and open it in a browser. The GitHub file page displays source code.
 
-Explore workspace switching, model management, workflows and Agents, run traces, dataset evaluation, and application publishing/API keys. The prototype provides three themes and core Chinese/English labels. Business data stays in the local browser; external calls, credentials, and costs are simulated. See the [prototype guide](prototype/README.md) for detailed boundaries and verification status.
+Explore workspace and project switching, pinned resource copies, model and credential management, workflows and Agents, approval inbox, run traces, dataset evaluation, application publishing/API keys, and marketplace review. The prototype provides three themes and core Chinese/English labels. Business data stays in the local browser; external calls, credentials, and costs are simulated. See the [prototype guide](prototype/README.md) for detailed boundaries and verification status.
 
 <!-- doc-section:architecture -->
 ## Product structure

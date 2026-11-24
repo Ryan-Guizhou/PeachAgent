@@ -185,7 +185,7 @@
 
   function workspaceStorageKey() {
     const session = getSession();
-    return window.StudioSpaces?.active()?.storageKey || (session && !session.isDemo ? 'otryx-studio-workspace::' + session.accountId : LEGACY_WORKSPACE);
+    return window.StudioProjects?.active()?.storageKey || window.StudioSpaces?.active()?.storageKey || (session && !session.isDemo ? 'otryx-studio-workspace::' + session.accountId : LEGACY_WORKSPACE);
   }
 
   function safeReturnHash(value) {
@@ -208,24 +208,25 @@
   function returnDestination() { return safeReturnHash(read(RETURN_KEY, 'session') || '#home'); }
   const isAuthRoute = route => AUTH_ROUTES.has(String(route || '').replace(/^#/, '').split('?')[0]);
 
-  function stopWorkspace() {
-    if (!studio || workspaceStopping) return;
+  function stopWorkspace(reason = 'session-ended') {
+    if (!studio || workspaceStopping) return false;
     workspaceStopping = true;
     try {
-      try { studio.Planning?.stopAll?.('session-ended'); } catch (_) { /* Individual runs are stopped below as well. */ }
+      try { studio.Planning?.stopAll?.(reason); } catch (error) { if (reason === 'space-switch' || reason === 'project-switch') throw error; /* Individual runs are stopped below as well. */ }
       for (const experiment of studio.state.qualityData?.experiments || []) {
         if (experiment.status === 'running') studio.Quality?.stopExperiment(experiment.id);
       }
       for (const run of studio.state.runs || []) {
         if (!['running', 'waiting', 'queued', 'pending'].includes(run.status)) continue;
         // Historical demo rows predate Runtime and do not contain its tool-call array.
-        if (run.engine === 'graph' && Array.isArray(run.toolCalls) && studio.Runtime?.stop) studio.Runtime.stop(run.id);
+        if (Array.isArray(run.toolCalls) && studio.Runtime?.stop) studio.Runtime.stop(run.id);
         else {
           run.status = 'stopped';
           run.finishedAt = Date.now();
           run.duration = run.finishedAt - (run.created || run.finishedAt);
           run.pending = null;
-          run.stopReason = '登录会话结束，已停止本地执行。';
+          run.pendingQueue = [];
+          run.stopReason = reason === 'space-switch' ? '切换空间，已停止本地执行。' : reason === 'project-switch' ? '切换项目，已停止本地执行。' : '登录会话结束，已停止本地执行。';
         }
       }
       studio.Publishing?.clearSession();
@@ -234,7 +235,7 @@
       studio.timers?.clear();
       studio.closeModal?.();
       studio.session = {};
-      studio.save?.();
+      return studio.save?.() !== false;
     } finally { workspaceStopping = false; }
   }
 
@@ -367,7 +368,7 @@
   }
 
   function logout(options = {}) {
-    if (studio?.dirty && !options.force) {
+    if ((studio?.dirty || window.StudioAppearance?.hasUncommittedInput?.(false)) && !options.force) {
       studio.modal({ title: '退出前处理未保存的修改', subtitle: '已保存的工作空间内容会保留。当前未保存的编辑将在退出后丢失。', body: '<div class="notice warning">正在执行的本地任务也会停止。重新登录后可查看已有运行记录。</div>', footer: studio.btn('继续编辑', 'modal-close', { variant: 'secondary' }) + studio.btn('放弃修改并退出', 'auth-confirm-logout', { variant: 'danger' }) });
       return false;
     }
@@ -412,21 +413,22 @@
     studio.modal({ title: session.name, subtitle: demo ? '公共演示空间 · 当前浏览器' : session.email, body: `<div class="auth-account-summary"><span class="avatar">${studio.icon(demo ? 'play' : 'users', 21)}</span><div><strong>${demo ? '演示空间' : '个人工作空间'}</strong><p>${demo ? '保留原有示例和你的演示修改。' : '内容按本地账户分别保存。'}</p></div></div><div class="notice">${demo ? '此空间不需要注册。创建本地账户后，将进入独立空间，演示内容不会迁入。' : '这是当前浏览器的本地演示账户，不是云端账号，也不会同步到其他设备。'}</div><dl class="auth-account-details"><div><dt>登录有效期</dt><dd>${studio.escape(expiry)}（北京时间）</dd></div><div><dt>会话方式</dt><dd>${session.remember ? '记住登录 · 最长 7 天' : '当前浏览器会话 · 最长 12 小时'}</dd></div></dl>${demo && studio.actions['role-member'] ? `<div class="auth-role-options">${studio.btn('个人空间视角', 'role-member', { variant: 'secondary', small: true })}${studio.btn('管理员演示', 'role-admin', { variant: 'secondary', small: true })}</div>` : ''}`, footer: studio.btn('关闭', 'modal-close', { variant: 'secondary' }) + studio.btn('退出登录', 'auth-logout', { variant: 'ghost', icon: 'logout' }) });
   }
 
+  const translate=value=>window.StudioAppearance?.t(value)||value;
   function field(label, name, options = {}) {
     const id = 'auth-' + name;
     const password = options.type === 'password';
     const described = `${id}-error${options.help ? ' ' + id + '-help' : ''}`;
-    return `<div class="field"><label class="field-label" for="${id}">${studio.escape(label)}<span class="required-star">*</span></label><div class="${password ? 'auth-password' : 'auth-input-wrap'}"><input class="input" id="${id}" name="${name}" type="${options.type || 'text'}" value="${studio.escape(options.value || '')}" autocomplete="${options.autocomplete || 'off'}"${options.inputmode ? ` inputmode="${options.inputmode}"` : ''} maxlength="${options.maxlength || (password ? 128 : 254)}" placeholder="${studio.escape(options.placeholder || '')}" aria-describedby="${described}" required${name === 'email' ? ' autocapitalize="none" spellcheck="false"' : ''}>${password ? `<button type="button" class="auth-password-toggle" data-action="auth-toggle-password" data-input="${id}" aria-label="显示${studio.escape(label)}" aria-pressed="false">${studio.icon('eye', 17)}<span>显示</span></button>` : ''}</div>${options.help ? `<p class="field-help" id="${id}-help">${studio.escape(options.help)}</p>` : ''}<p class="field-error" id="${id}-error"></p></div>`;
+    return `<div class="field"><label class="field-label" for="${id}">${studio.escape(translate(label))}<span class="required-star">*</span></label><div class="${password ? 'auth-password' : 'auth-input-wrap'}"><input class="input" id="${id}" name="${name}" type="${options.type || 'text'}" value="${studio.escape(options.value || '')}" autocomplete="${options.autocomplete || 'off'}"${options.inputmode ? ` inputmode="${options.inputmode}"` : ''} maxlength="${options.maxlength || (password ? 128 : 254)}" placeholder="${studio.escape(translate(options.placeholder || ''))}" aria-describedby="${described}" required${name === 'email' ? ' autocapitalize="none" spellcheck="false"' : ''}>${password ? `<button type="button" class="auth-password-toggle" data-action="auth-toggle-password" data-input="${id}" aria-label="显示${studio.escape(translate(label))}" aria-pressed="false">${studio.icon('eye', 17)}<span>显示</span></button>` : ''}</div>${options.help ? `<p class="field-help" id="${id}-help">${studio.escape(options.help)}</p>` : ''}<p class="field-error" id="${id}-error"></p></div>`;
   }
 
   function formError() { return '<div class="notice error auth-form-error" id="auth-form-error" role="alert" tabindex="-1" hidden></div>'; }
-  function submit(label) { return `<button type="submit" class="btn btn-primary auth-submit"><span>${studio.escape(label)}</span>${studio.icon('arrow', 16)}</button>`; }
+  function submit(label) { return `<button type="submit" class="btn btn-primary auth-submit"><span>${studio.escape(translate(label))}</span>${studio.icon('arrow', 16)}</button>`; }
   function rememberField() { return '<label class="auth-check" for="auth-remember"><input type="checkbox" id="auth-remember" name="remember"><span>记住登录 7 天</span></label>'; }
   function brand() { return `<a class="auth-brand" href="#login" aria-label="OTRYX Studio 登录"><span class="auth-brand-symbol">${studio.icon('layers', 23)}</span><span>OTRYX <span class="auth-brand-sub">Studio</span></span></a>`; }
 
   function layout(title, description, content, active = 'login') {
     const session = getSession();
-    return `<div class="auth-page"><header class="auth-top">${brand()}<span class="auth-prototype-label">本地交互原型</span>${window.StudioAppearance?.controls()||''}${session ? '<a class="auth-back" href="#home">返回工作空间</a>' : `<a class="auth-back" href="#${active === 'register' ? 'login' : 'register'}">${active === 'register' ? '已有账户？登录' : '创建本地账户'}</a>`}</header><div class="auth-layout"><aside class="auth-intro" aria-label="工作空间介绍"><p class="eyebrow">YOUR AI WORKSPACE</p><h2>从一个想法，<br>到可运行的应用。</h2><p class="auth-intro-description">在同一个空间里构建智能体、编排工作流，<br class="auth-desktop-break">让每一次调用都可配置、可追踪、可改进。</p><div class="auth-feature-list"><div>${studio.icon('agent', 20)}<p><strong>让智能体完成任务</strong><span>配置模型、工具和协作方式。</span></p></div><div>${studio.icon('workflow', 20)}<p><strong>把过程编排清楚</strong><span>从节点传参到分支执行，逐步调试。</span></p></div><div>${studio.icon('code', 20)}<p><strong>将能力提供给业务</strong><span>发布应用与 API，持续检查质量。</span></p></div></div><p class="auth-intro-note">你的内容，保存在当前浏览器。<br>账户之间使用独立工作空间。</p></aside><section class="auth-card" aria-labelledby="auth-heading"><div class="auth-card-heading"><p class="auth-step-label">${active === 'register' ? '创建你的工作空间' : active === 'forgot-password' || active === 'reset-password' ? '找回访问方式' : active === 'session-expired' ? '会话状态' : '欢迎回来'}</p><h1 id="auth-heading" tabindex="-1">${studio.escape(title)}</h1><p>${studio.escape(description)}</p></div>${content}</section></div><footer class="auth-footer"><span>OTRYX Studio</span><span>本地演示账户 · 不连接身份服务 · 不发送邮件</span></footer></div>`;
+    return `<div class="auth-page"><header class="auth-top">${brand()}<span class="auth-prototype-label">本地交互原型</span>${window.StudioAppearance?.controls()||''}${session ? '<a class="auth-back" href="#home">返回工作空间</a>' : `<a class="auth-back" href="#${active === 'register' ? 'login' : 'register'}">${active === 'register' ? '已有账户？登录' : '创建本地账户'}</a>`}</header><div class="auth-layout"><aside class="auth-intro" aria-label="工作空间介绍"><p class="eyebrow">YOUR AI WORKSPACE</p><h2>从一个想法，<br>到可运行的应用。</h2><p class="auth-intro-description">在同一个空间里构建智能体、编排工作流，<br class="auth-desktop-break">让每一次调用都可配置、可追踪、可改进。</p><div class="auth-feature-list"><div>${studio.icon('agent', 20)}<p><strong>让智能体完成任务</strong><span>配置模型、工具和协作方式。</span></p></div><div>${studio.icon('workflow', 20)}<p><strong>把过程编排清楚</strong><span>从节点传参到分支执行，逐步调试。</span></p></div><div>${studio.icon('code', 20)}<p><strong>将能力提供给业务</strong><span>发布应用与 API，持续检查质量。</span></p></div></div><p class="auth-intro-note">你的内容，保存在当前浏览器。<br>账户之间使用独立工作空间。</p></aside><section class="auth-card" aria-labelledby="auth-heading"><div class="auth-card-heading"><p class="auth-step-label">${active === 'register' ? '创建你的工作空间' : active === 'forgot-password' || active === 'reset-password' ? '找回访问方式' : active === 'session-expired' ? '会话状态' : '欢迎回来'}</p><h1 id="auth-heading" tabindex="-1">${studio.escape(translate(title))}</h1><p>${studio.escape(translate(description))}</p></div>${content}</section></div><footer class="auth-footer"><span>OTRYX Studio</span><span>本地演示账户 · 不连接身份服务 · 不发送邮件</span></footer></div>`;
   }
 
   function loginPage() {
@@ -569,7 +571,7 @@
   const api = window.StudioAuth = {
     attach, dispose, getSession, workspaceStorageKey, guard, isAuthRoute, safeReturnHash,
     createAccount, signIn, enterDemo, beginReset, resetChallenge, resetPassword,
-    logout, expire, openAccount, resume,
+    logout, expire, openAccount, resume, stopWorkspace,
     constants: Object.freeze({ ACCOUNT_KEY, SESSION_KEY, REMEMBER_KEY, RETURN_KEY, LEGACY_WORKSPACE, SESSION_TTL, REMEMBER_TTL, RESET_TTL })
   };
 })();

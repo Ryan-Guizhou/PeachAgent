@@ -14,7 +14,7 @@ const storage={
  removeItem:key=>stores.delete(key)
 };
 const rootElement={dataset:{},lang:'zh-CN',setAttribute(key,value){if(key==='data-theme')this.dataset.theme=value;else this[key]=value;}};
-let accountId='u-0123456789abcdef01234567',reloads=0;
+let accountId='u-0123456789abcdef01234567',reloads=0,stops=0,cleanupResult=true;
 const doc={
  documentElement:rootElement,
  querySelector:()=>null,
@@ -32,7 +32,7 @@ const studio={
 };
 const win={
  crypto,Studio:studio,
- StudioAuth:{getSession:()=>({accountId})},
+ StudioAuth:{getSession:()=>({accountId}),stopWorkspace(reason){assert.equal(reason,'space-switch');stops++;return cleanupResult;}},
  StudioAppearance:null
 };
 const context=vm.createContext({
@@ -54,12 +54,21 @@ assert.equal(rootElement.lang,'en-US');
 assert.equal(A.t('智能体'),'Agents');
 assert.equal(A.setLocale('zh-CN'),true);
 assert.equal(A.t('智能体'),'智能体');
+studio.dirty=true;
+assert.equal(A.setLocale('en-US'),false);
+assert.equal(A.getLocale(),'zh-CN');
+studio.dirty=false;
 assert.equal(W.active().id,'default');
 assert.equal(W.active().storageKey,'otryx-studio-workspace::'+accountId);
 const newSpace=W.create('产品研发');
 assert.equal(W.list().length,2);
 assert.equal(W.list().filter(item=>item.active).length,1);
 assert.equal(W.rename(newSpace.id,'工程测试').name,'工程测试');
+cleanupResult=false;
+assert.throws(()=>W.switchTo(newSpace.id),/保存未完成/);
+assert.equal(W.active().id,'default');
+assert.equal(reloads,0);
+cleanupResult=true;
 assert.equal(W.switchTo(newSpace.id),true);
 assert.equal(reloads,1);
 assert.equal(W.active().storageKey,'otryx-studio-workspace::'+accountId+'::'+newSpace.id);
@@ -74,4 +83,9 @@ studio.dirty=false;
 assert.equal(W.switchTo('default'),true);
 assert.equal(W.active().storageKey,'otryx-studio-workspace::'+accountId);
 assert.equal(reloads,2);
+assert.equal(stops,3);
+assert.equal(W.rename('default','新名称').name,'新名称');
+assert.equal(W.active().name,'新名称');
+assert.equal(studio.state.spaceName,'新名称');
+W.archive(newSpace.id);assert.throws(()=>W.switchTo(newSpace.id),/归档/);assert(W.canDelete(newSpace.id));W.remove(newSpace.id);assert.equal(W.list().length,1);
 console.log('PASS: appearance theme/locale persistence, default workspace, isolation, rename, dirty switch guard.');

@@ -50,7 +50,7 @@
     return chunks;
   }
   function knowledgeSnapshot(kb) {
-    return clone({ id: kb.id, name: kb.name, description: kb.description, version: kb.version, revision: kb.revision, settings: kb.settings, documents: kb.documents, created: kb.updated });
+    return clone({ id: kb.id, name: kb.name, description: kb.description, version: kb.version, revision: kb.revision, settings: kb.settings, documents: kb.documents, origin: kb.origin, created: kb.updated });
   }
   function rememberKnowledge(kb, reason) {
     kb.revision = (kb.revision || 0) + 1;
@@ -60,7 +60,7 @@
     kb.versions.push({ ...knowledgeSnapshot(kb), reason });
   }
   function contentSnapshot(item) {
-    return clone({ id: item.id, type: item.type, name: item.name, title: item.name, description: item.description, content: item.content, template: item.content, version: item.version, arguments: item.arguments || [], dependencies: item.dependencies || [], tags: item.tags || [], created: item.updated });
+    return clone({ id: item.id, type: item.type, name: item.name, title: item.name, description: item.description, content: item.content, template: item.content, version: item.version, arguments: item.arguments || [], dependencies: item.dependencies || [], tags: item.tags || [], origin: item.origin, created: item.updated });
   }
   function rememberContent(item, reason) {
     item.updated = now(); item.versions = item.versions || [];
@@ -85,6 +85,27 @@
     rememberKnowledge(kb, old ? '更新知识库配置与分段' : '创建知识库');
     if (!old) store.knowledge.unshift(kb);
     commit(); return kb;
+  };
+  // Import a selected source revision as a new independent knowledge base.
+  // Validate all documents before the single persistence operation.
+  C.importKnowledgeSnapshot = (source, name, origin) => {
+    name = labelValid(name || source.name, '知识库名称');
+    if (store.knowledge.some(k => k.name === name || (k.aliases || []).includes(name))) throw fail('NAME_EXISTS','知识库名称已存在。');
+    const description = text(source.description).slice(0,500);
+    if (hasSecret(name+description)) throw fail('SECRET_CONTENT','名称或说明中疑似包含访问凭据。');
+    const settings = settingsValid({chunkSize:source.settings?.chunkSize??500,overlap:source.settings?.overlap??50,retrievalMode:'keyword'});
+    const docs = source.documents || [];
+    if (!Array.isArray(docs) || docs.length>200) throw fail('DOCUMENT_LIMIT','最多导入 200 份资料。');
+    let total=0;
+    const documents=docs.map(doc=>{
+      const content=bodyValid(doc.content), title=labelValid(doc.name,'资料名称');
+      total+=content.length;
+      if (total>1000000) throw fail('DOCUMENT_LIMIT','导入正文总量最多 1,000,000 字符。');
+      const item={id:S.uid('document'),name:title,content,sourceType:'text',status:'ready',created:now(),updated:now()};
+      item.chunks=splitDocument(item,settings);return item;
+    });
+    const kb={id:S.uid('knowledge'),name,description,tags:tags(source.tags),settings,documents,revision:0,version:'1.0.0',created:now(),status:'active',versions:[],origin:clone(origin)};
+    rememberKnowledge(kb,'跨项目版本副本；重新配置向量与重排模型');store.knowledge.unshift(kb);commit();return kb;
   };
   C.addDocument = (id, values) => {
     const kb = C.getKnowledge(id); if (!kb || kb.status === 'archived') throw fail('KNOWLEDGE_UNAVAILABLE', '知识库不存在或已归档，请恢复后再维护资料。');
@@ -198,6 +219,7 @@
     Object.assign(item, { name, description: text(values.description).slice(0, 500), content, tags: tags(values.tags), dependencies: tags(values.dependencies) });
     item.arguments = [...new Set([...content.matchAll(/{{\s*([^{}]+?)\s*}}/g)].map(m => m[1].trim()))].map(name => ({ name, required: true }));
     if (values.marketId) item.marketId = values.marketId;
+    if (values.origin && !old) item.origin = { projectId: String(values.origin.projectId), resourceId: String(values.origin.resourceId), version: String(values.origin.version) };
     rememberContent(item, old ? '保存内容更新' : '创建内容');
     if (!old) store.contents.unshift(item); commit(); return item;
   };

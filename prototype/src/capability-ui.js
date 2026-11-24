@@ -403,6 +403,7 @@
       const manifest = JSON.parse(form.elements.namedItem('manifest').value);
       if (!manifest.name || !Array.isArray(manifest.actions) || !manifest.actions.length) throw new Error('清单需要 name 和至少一个 actions 动作。');
       if (manifest.actions.length > 12) throw new Error('演示清单最多支持 12 个动作。');
+      if (new Set(manifest.actions.map(a=>a.name)).size !== manifest.actions.length) throw new Error('插件动作名称不能重复。');
       const allowed = ['docs.create', 'table.upsert', 'web.search', 'web.fetch', 'workspace.write'];
       manifest.actions.forEach(action => { if (!action.name || !allowed.includes(action.adapterId)) throw new Error('每个动作需要名称与受支持的 adapterId。'); const base = getTool(action.adapterId); if (!base) throw new Error('缺少该动作的模拟适配器。'); if (action.inputSchema && JSON.stringify(action.inputSchema) !== JSON.stringify(base.inputSchema)) throw new Error('此演示导入器只支持适配器原有 Schema。移除自定义 inputSchema，或使用能力清单显示的完整契约。'); });
       const id = S.uid('plugin'), conn = { id: id + '-default', name: manifest.name + ' · 默认实例', kind: 'plugin', pluginId: id, transport: 'plugin', location: '隔离容器', endpoint: 'workspace://imports/' + id, status: 'ready', enabled: true, credentialRef: '', authMode: 'none', authType: 'none', version: '1.0.0' };
