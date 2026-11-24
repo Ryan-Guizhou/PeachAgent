@@ -24,6 +24,7 @@ PROVIDER = "http://127.0.0.1:18081"
 TERMINAL = {"SUCCEEDED", "FAILED", "CANCELLED", "INTERRUPTED"}
 REQUESTS = []
 FIXTURE_AUTH = []
+FIXTURE_MESSAGES = []
 audio = io.BytesIO()
 with wave.open(audio, "wb") as w:
     w.setnchannels(1)
@@ -50,6 +51,18 @@ class Provider(BaseHTTPRequestHandler):
         FIXTURE_AUTH.append((path, self.headers.get('Authorization'), self.headers.get('x-api-key')))
         if path.endswith("/chat/completions"):
             obj = json.loads(raw)
+            FIXTURE_MESSAGES.append(obj.get("messages",[]))
+            if obj.get("model") == "partial" and obj.get("messages",[])[-1]["content"]=="stream-cut":
+                time.sleep(.15)
+                first=b'data: {"choices":[{"delta":{"content":"Retained partial response"}}]}\n\n'
+                self.send_response(200)
+                self.send_header("Content-Type","text/event-stream")
+                self.send_header("Connection","close")
+                self.end_headers()
+                self.wfile.write(first);self.wfile.flush()
+                time.sleep(1)
+                self.close_connection=True
+                return
             if obj.get("model") == "reject":
                 self.send_error(429)
                 return
@@ -112,6 +125,12 @@ def wait(c,p,run,expected="SUCCEEDED",timeout=40):
             return detail
         time.sleep(.25)
     raise AssertionError(("Run timeout",run))
+def replay_events(c,p,r,after=0):
+    req=urllib.request.Request(BASE+"/api/v1"+p+"/runs/"+r["id"]+"/events",
+                               headers={"Origin":ORIGIN,"Accept":"text/event-stream","Last-Event-ID":str(after)})
+    with c.opener.open(req,timeout=45) as response:
+        return [json.loads(line[6:]) for line in response.read().decode().splitlines() if line.startswith("data: ")]
+
 def event_text(c,p,r):
     data=c.call("GET",p+"/runs/"+r["id"]+"/events",raw=True).decode()
     assert "event: terminal" in data,data[:500]
@@ -229,6 +248,51 @@ try:
     usage=c.call("GET",p+"/usage?from=20000101000000&to=20990101000000")
     assert len(usage)>=len(descriptors)+1 and any(x["totalTokens"]==15 for x in usage)
     assert all(x["inflightCount"]==0 for x in c.call("GET",p+"/budgets"))
+    # Real stream failure: the first fragment is persisted, a missing upstream terminal fails explicitly.
+    partial_model=c.call("POST",w+"/models",{"providerId":providers["NONE"][0],"name":"Partial stream QA",
+      "externalModelId":"partial","modelType":"LLM","protocolKey":model["protocolKey"],"protocolVersion":model["protocolVersion"],
+      "protocolOptions":{},"capabilities":{},"modelOptions":{"contextWindow":512,"maxOutputTokens":32},
+      "pricing":{"currency":"USD","perRequest":0.01},"enabled":True,"rowVersion":None})
+    c.call("POST",target+"/model-bindings",{"modelId":partial_model["id"],"active":True})
+    diagnostic=c.call("POST",target+"/models/"+partial_model["id"]+"/debug",
+                      {"input":{"text":"verify"},"audioBase64":None,"maxOutputTokens":32},key=key())
+    wait(c,target,diagnostic)
+    # The partial conversation remains in the default project for the browser regression.
+    c.call("POST",p+"/model-bindings",{"modelId":partial_model["id"],"active":True})
+    partial_conv=c.call("POST",p+"/conversations",{"title":"Partial response QA"})
+    cut={"modelId":partial_model["id"],"text":"stream-cut","promptVersionId":None,"variables":{},"maxOutputTokens":32}
+    before=len(REQUESTS)
+    partial=c.call("POST",p+"/conversations/"+partial_conv["id"]+"/runs",cut,key=key())
+    c.call("POST",p+"/conversations/"+partial_conv["id"]+"/runs",cut,key=key(),expected=409)
+    detail=wait(c,p,partial,"FAILED")
+    assert detail["errorCode"]=="MODEL_STREAM_INTERRUPTED",detail
+    full=replay_events(c,p,partial)
+    assert [e["seq"] for e in full]==list(range(1,len(full)+1))
+    delta=next(e for e in full if e["eventType"]=="delta")
+    resumed=replay_events(c,p,partial,delta["seq"])
+    assert resumed==[e for e in full if e["seq"]>delta["seq"]] and resumed[-1]["eventType"]=="terminal"
+    msgs=c.call("GET",p+"/conversations/"+partial_conv["id"]+"/messages")
+    assert msgs[-1]["status"]=="ERROR" and msgs[-1]["content"]=="Retained partial response"
+    assert len(REQUESTS)==before+1
+    c.call("POST",p+"/runs/"+partial["id"]+"/retry",{"acknowledgeUnknown":False},key=key(),expected=409)
+    # The newest user input must fit; complete earlier turns are kept or dropped as a pair.
+    context_conv=c.call("POST",target+"/conversations",{"title":"Context boundary QA"})
+    for index in range(3):
+        text=("turn-"+str(index)+" ")*23
+        bounded={"modelId":partial_model["id"],"text":text,"promptVersionId":None,"variables":{},"maxOutputTokens":32}
+        run_ctx=c.call("POST",target+"/conversations/"+context_conv["id"]+"/runs",bounded,key=key())
+        wait(c,target,run_ctx)
+        sent=FIXTURE_MESSAGES[-1]
+        assert sent[-1]=={"role":"user","content":text}
+        assert len(sent)%2==1 and all(sent[i]["role"]=="user" and sent[i+1]["role"]=="assistant" for i in range(0,len(sent)-1,2))
+        assert sum(len(m["content"].encode()) for m in sent)+32*len(sent)+32<=512
+        if index==2:
+            assert len(sent)<5,"Oldest complete turn was not clipped"
+    before=len(REQUESTS)
+    oversized={"modelId":partial_model["id"],"text":"x"*513,"promptVersionId":None,"variables":{},"maxOutputTokens":32}
+    c.call("POST",target+"/conversations/"+context_conv["id"]+"/runs",oversized,key=key(),expected=422)
+    assert len(REQUESTS)==before
+    print("PASS: partial output persisted, exact Last-Event-ID replay, same-conversation concurrency, explicit uncertain retry and context clipping")
     # A retry creates a new persisted run; same key cannot start another call.
     before=len(REQUESTS)
     retry_key=key()
