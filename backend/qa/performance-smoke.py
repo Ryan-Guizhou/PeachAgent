@@ -201,6 +201,8 @@ COMMIT;
 """)
     counts = mysql("SELECT (SELECT COUNT(*) FROM RT_RUN),(SELECT COUNT(*) FROM RT_MODEL_CALL);")
     assert counts == f"{SEED_COUNT}\t{SEED_COUNT}", counts
+    # 固定大批量导入后的真实统计信息，不依赖 MySQL 后台异步统计刷新时机。
+    mysql("ANALYZE TABLE RT_RUN, RT_MODEL_CALL;")
 
 
 class FixtureServer(ThreadingHTTPServer):
@@ -267,7 +269,15 @@ def check_pages(scopes):
         assert [row["id"] for row in first + second] == sorted([row["id"] for row in first + second], reverse=True)
         client.call("GET", path + "&beforeId=bad", expected=422)
     other = scopes[4]["client"]
-    other.call("GET", s["path"] + "/runs", expected=404)
+    for path in page_paths(s):
+        other.call("GET", path, expected=404)
+        Client().call("GET", path, expected=401)
+    # 同租户的其他工作空间与项目 ID 也不能交叉组合授权。
+    wrong = "/workspaces/" + scopes[2]["workspace"] + "/projects/" + s["project"]
+    client.call("GET", wrong + "/runs", expected=404)
+    client.call("GET", wrong + "/usage?from=" + HISTORY_TIME + "&to=" + HISTORY_END, expected=404)
+    # 拒绝请求不得污染下一次正常的 scope 鉴权。
+    assert len(client.call("GET",page_paths(s)[0])) == 50
     first = client.call("GET", page_paths(s)[0])[0]
     other.call("GET", s["path"] + "/runs/" + first["id"], expected=404)
     other.call("GET", s["path"] + "/runs/" + first["id"] + "/events", expected=404)
@@ -447,9 +457,27 @@ def main():
         report["pagination"] = "PASSED"
         report["read"] = read_benchmark(scopes[0])
         print("READ", json.dumps(report["read"]), flush=True)
+        thresholds = {
+            "runRead": report["read"]["runP95Ms"] <= 200,
+            "callRead": report["read"]["callP95Ms"] <= 200,
+        }
+        report["thresholds"] = thresholds
+        # 前置硬门禁已经失败时，不再浪费十分钟执行 soak；不跳过失败项，也不把部分结果标记成功。
+        if not all(thresholds.values()):
+            report["status"] = "FAILED"
+            report["skippedStages"] = ["create","soak"]
+            print("RESULT",json.dumps(report),flush=True)
+            raise AssertionError(thresholds)
         created = create_benchmark(scopes)
         report["create"] = {"concurrency": 20, "samples": len(created), "p95Ms": p95([row[2] for row in created])}
         print("CREATE", json.dumps(report["create"]), flush=True)
+        thresholds["create"] = report["create"]["p95Ms"] <= 300
+        if not thresholds["create"]:
+            report["status"] = "FAILED"
+            report["skippedStages"] = ["soak"]
+            report["reconciliation"] = reconcile(created)
+            print("RESULT",json.dumps(report),flush=True)
+            raise AssertionError(thresholds)
         with LOCK:
             for key in PEAKS:
                 PEAKS[key] = 0
@@ -462,15 +490,12 @@ def main():
                           "providerToClientP95Ms": p95([row[5]["providerToClientMs"] for row in soaked]),
                           "firstBeforeUpstreamTail": sum(row[5]["beforeTail"] for row in soaked)}
         report["reconciliation"] = reconcile(created + soaked)
-        thresholds = {
-            "runRead": report["read"]["runP95Ms"] <= 200,
-            "callRead": report["read"]["callP95Ms"] <= 200,
-            "create": report["create"]["p95Ms"] <= 300,
+        thresholds.update({
             "soakDuration": elapsed >= SOAK_SECONDS,
             "globalConcurrency": PEAKS["global"] == 32,
             "scopeConcurrency": PEAKS["tenant"] <= 8 and PEAKS["workspace"] <= 4 and PEAKS["project"] <= 2,
             "firstEvent": report["soak"]["platformFirstEventP95Ms"] <= 300,
-        }
+        })
         report["thresholds"] = thresholds
         report["status"] = "PASSED" if all(thresholds.values()) else "FAILED"
         print("RESULT", json.dumps(report), flush=True)

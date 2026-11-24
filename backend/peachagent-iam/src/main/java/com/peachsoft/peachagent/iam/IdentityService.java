@@ -3,9 +3,13 @@ package com.peachsoft.peachagent.iam;
 import cn.dev33.satoken.stp.StpUtil;
 import com.peachsoft.peachagent.common.DomainException;
 import com.peachsoft.peachagent.common.ScopeContext;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
 import jakarta.servlet.DispatcherType;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.web.servlet.HandlerMapping;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -21,36 +25,77 @@ public class IdentityService {
                             String platformRole, String defaultWorkspaceId, String currency,
                             String locale, String theme, long authEpoch) { }
 
-    private static final String READ_PRINCIPAL=IdentityService.class.getName()+".readPrincipal";
+    private static final String READ_IDENTITY=IdentityService.class.getName()+".readIdentity";
+
+    private record ReadIdentity(Principal principal,ScopeContext project) { }
+
+    private static HttpServletRequest readRequest(){
+        var attributes=RequestContextHolder.getRequestAttributes();
+        if(!(attributes instanceof ServletRequestAttributes servlet))return null;
+        var request=servlet.getRequest();
+        return request.getDispatcherType()==DispatcherType.REQUEST&&"GET".equals(request.getMethod())?request:null;
+    }
 
     public Principal current() {
-        // 仅在同一个同步 GET 请求内复用已验证快照；写请求和 Worker/SSE 持续检查不使用缓存。
-        var attributes=RequestContextHolder.getRequestAttributes();
-        var request=attributes instanceof ServletRequestAttributes servlet?servlet.getRequest():null;
-        boolean read=request!=null&&request.getDispatcherType()==DispatcherType.REQUEST&&"GET".equals(request.getMethod());
-        if(read&&request.getAttribute(READ_PRINCIPAL) instanceof Principal verified)return verified;
-        StpUtil.checkLogin();
-        Principal p = active(StpUtil.getLoginIdAsString());
-        Object epoch = StpUtil.getTokenSession().get("authEpoch");
-        if (epoch == null || !Long.toString(p.authEpoch()).equals(epoch.toString())) {
-            StpUtil.logout();
-            throw new DomainException("SESSION_EXPIRED", 401, "Session expired");
+        var request=readRequest();
+        if(request!=null&&request.getAttribute(READ_IDENTITY) instanceof ReadIdentity verified)return verified.principal();
+        // getLoginIdAsString 自身执行登录态及活跃超时检查，无需先重复 checkLogin。
+        String userId=StpUtil.getLoginIdAsString();
+        Object variables=request==null?null:request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE);
+        ReadIdentity verified;
+        if(variables instanceof Map<?,?> path&&path.get("w") instanceof String workspaceId
+                &&path.get("p") instanceof String projectId){
+            verified=activeProject(userId,workspaceId,projectId);
+        }else{
+            verified=new ReadIdentity(active(userId),null);
         }
-        if(read)request.setAttribute(READ_PRINCIPAL,p);
+        Principal p=verified.principal();
+        Object epoch=StpUtil.getTokenSession().get("authEpoch");
+        if(epoch==null||!Long.toString(p.authEpoch()).equals(epoch.toString())){
+            StpUtil.logout();
+            throw new DomainException("SESSION_EXPIRED",401,"Session expired");
+        }
+        // 仅在完成 Token Session 与数据库认证纪元比对后的同步 GET 请求内复用；绝不跨请求缓存。
+        if(request!=null)request.setAttribute(READ_IDENTITY,verified);
         return p;
     }
 
+    private static Principal principal(ResultSet rs)throws SQLException{
+        return new Principal(rs.getString("ID"),rs.getString("TENANT_ID"),
+                rs.getString("EMAIL"),rs.getString("DISPLAY_NAME"),rs.getString("PLATFORM_ROLE"),
+                rs.getString("DEFAULT_WORKSPACE_ID"),rs.getString("CURRENCY"),
+                rs.getString("LOCALE"),rs.getString("THEME"),rs.getLong("AUTH_EPOCH"));
+    }
+
     public Principal active(String userId) {
-        List<Principal> rows = jdbc.query("""
-                SELECT U.ID, T.ID AS TENANT_ID, U.EMAIL, U.DISPLAY_NAME, U.PLATFORM_ROLE,
-                       T.DEFAULT_WORKSPACE_ID, T.CURRENCY, U.LOCALE, U.THEME, U.AUTH_EPOCH
+        List<Principal> rows=jdbc.query("""
+                SELECT U.ID,T.ID AS TENANT_ID,U.EMAIL,U.DISPLAY_NAME,U.PLATFORM_ROLE,
+                       T.DEFAULT_WORKSPACE_ID,T.CURRENCY,U.LOCALE,U.THEME,U.AUTH_EPOCH
                 FROM IAM_USER U JOIN IAM_TENANT T ON T.OWNER_USER_ID = U.ID
                 WHERE U.ID = ? AND U.STATUS = 'ACTIVE' AND T.STATUS = 'ACTIVE'
-                """, (rs, n) -> new Principal(rs.getString("ID"), rs.getString("TENANT_ID"),
-                rs.getString("EMAIL"), rs.getString("DISPLAY_NAME"), rs.getString("PLATFORM_ROLE"),
-                rs.getString("DEFAULT_WORKSPACE_ID"), rs.getString("CURRENCY"),
-                rs.getString("LOCALE"), rs.getString("THEME"), rs.getLong("AUTH_EPOCH")), userId);
-        if (rows.isEmpty()) throw new DomainException("SESSION_EXPIRED", 401, "Account unavailable");
+                """,(rs,n)->principal(rs),userId);
+        if(rows.isEmpty())throw new DomainException("SESSION_EXPIRED",401,"Account unavailable");
+        return rows.getFirst();
+    }
+
+    /** 同一语句读取当前身份与项目归属；LEFT JOIN 保持账号失效 401、项目不可访问 404 的区分。 */
+    private ReadIdentity activeProject(String userId,String workspaceId,String projectId){
+        List<ReadIdentity> rows=jdbc.query("""
+                SELECT U.ID,T.ID AS TENANT_ID,U.EMAIL,U.DISPLAY_NAME,U.PLATFORM_ROLE,
+                       T.DEFAULT_WORKSPACE_ID,T.CURRENCY,U.LOCALE,U.THEME,U.AUTH_EPOCH,
+                       W.ID AS WORKSPACE_ID,P.ID AS PROJECT_ID
+                FROM IAM_USER U JOIN IAM_TENANT T ON T.OWNER_USER_ID = U.ID
+                LEFT JOIN IAM_WORKSPACE W ON W.TENANT_ID = T.ID AND W.ID = ? AND W.STATUS = 'ACTIVE'
+                LEFT JOIN IAM_PROJECT P ON P.TENANT_ID = T.ID AND P.WORKSPACE_ID = W.ID
+                    AND P.ID = ? AND P.STATUS = 'ACTIVE'
+                WHERE U.ID = ? AND U.STATUS = 'ACTIVE' AND T.STATUS = 'ACTIVE'
+                """,(rs,n)->{
+            Principal p=principal(rs);
+            String resolved=rs.getString("PROJECT_ID");
+            ScopeContext scope=resolved==null?null:new ScopeContext(p.userId(),p.tenantId(),rs.getString("WORKSPACE_ID"),resolved);
+            return new ReadIdentity(p,scope);
+        },workspaceId,projectId,userId);
+        if(rows.isEmpty())throw new DomainException("SESSION_EXPIRED",401,"Account unavailable");
         return rows.getFirst();
     }
 
@@ -68,7 +113,14 @@ public class IdentityService {
     }
 
     public ScopeContext project(String workspaceId, String projectId) {
-        return project(current(), workspaceId, projectId, false);
+        Principal principal=current();
+        var request=readRequest();
+        if(request!=null&&request.getAttribute(READ_IDENTITY) instanceof ReadIdentity verified
+                &&verified.principal().equals(principal)&&verified.project()!=null){
+            ScopeContext scope=verified.project();
+            if(scope.workspaceId().equals(workspaceId)&&scope.projectId().equals(projectId))return scope;
+        }
+        return project(principal,workspaceId,projectId,false);
     }
 
     public ScopeContext project(Principal p, String workspaceId, String projectId, boolean includeArchived) {
