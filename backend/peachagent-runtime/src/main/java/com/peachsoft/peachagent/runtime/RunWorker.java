@@ -2,8 +2,17 @@ package com.peachsoft.peachagent.runtime;
 
 import com.peachsoft.peachagent.common.DomainException;
 import com.peachsoft.peachagent.common.IdGenerator;
-import com.peachsoft.peachagent.model.*;
-import java.util.concurrent.*;
+import com.peachsoft.peachagent.model.ModelExecution;
+import com.peachsoft.peachagent.model.ModelExecutionContext;
+import com.peachsoft.peachagent.model.ModelExecutionRequest;
+import com.peachsoft.peachagent.model.ModelService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,11 +35,28 @@ public class RunWorker {
     @Scheduled(fixedDelay=250)
     public void poll(){
         if(stopping.get())return;
-        while(capacity.tryAcquire()){
+        while(!stopping.get() && capacity.tryAcquire()){
             RunService.Claim claim;
             try{claim=runs.claim(owner);}catch(Exception ex){capacity.release();log.warn("Run claim failed");return;}
             if(claim==null){capacity.release();return;}
-            tasks.submit(()->{try{execute(claim);}finally{capacity.release();}});
+            try {
+                tasks.submit(() -> {
+                    try {
+                        execute(claim);
+                    } finally {
+                        capacity.release();
+                    }
+                });
+            } catch (RejectedExecutionException ex) {
+                capacity.release();
+                // 尚未派发外部调用；关闭期间归还本地槽并尽力结束已领取的任务。
+                try {
+                    runs.finish(claim, null, null, "WORKER_STOPPING", 0);
+                } catch (Exception settlementError) {
+                    log.warn("Rejected run settlement failed runId={}", claim.id());
+                }
+                return;
+            }
         }
     }
     @Scheduled(fixedDelay=5000)

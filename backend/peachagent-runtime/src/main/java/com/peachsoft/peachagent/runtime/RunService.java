@@ -5,6 +5,7 @@ import com.peachsoft.peachagent.iam.*;
 import com.peachsoft.peachagent.model.*;
 import com.peachsoft.peachagent.studio.*;
 import com.peachsoft.peachagent.metering.BudgetService;
+import com.peachsoft.peachagent.runtime.lease.LeaseFence;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
@@ -218,16 +219,21 @@ public class RunService {
             return new Claim(id,scope(r),epoch,owner,mapper.readValue(r.get("REQUEST_SNAPSHOT").toString(),Payload.class),str(r,"RUN_TYPE"));
         });
     }
-    private boolean owned(Map<String,Object> r,Claim c){return c.owner().equals(r.get("LEASE_OWNER"))&&c.epoch()==n(r,"LEASE_EPOCH")&&!TERMINAL.contains(r.get("STATUS"));}
+    /** 持有同一代租约且尚未过期，才允许变更运行事实。 */
+    private boolean owned(Map<String,Object> r,Claim c,String now){
+        return !TERMINAL.contains(r.get("STATUS"))
+                && LeaseFence.isCurrent(c.owner(),c.epoch(),str(r,"LEASE_OWNER"),n(r,"LEASE_EPOCH"),str(r,"LEASE_UNTIL"),now);
+    }
     private void ensure(Map<String,Object> r,Claim c){
-        if(!owned(r,c)||!"RUNNING".equals(r.get("STATUS"))||str(r,"DEADLINE_AT").compareTo(time.now())<=0)
+        String now=time.now();
+        if(!owned(r,c,now)||!"RUNNING".equals(r.get("STATUS"))||str(r,"DEADLINE_AT").compareTo(now)<=0)
             throw conflict("RUN_STOPPED","Run no longer dispatchable");
     }
     public boolean heartbeat(Claim c){
         String now=time.now();
         return jdbc.update("""
-                UPDATE RT_RUN SET HEARTBEAT_AT = ?,LEASE_UNTIL = ? WHERE ID = ? AND LEASE_OWNER = ? AND LEASE_EPOCH = ? AND STATUS = 'RUNNING' AND DEADLINE_AT > ?
-                """,now,TimeCodec.plusSeconds(now,30),c.id(),c.owner(),c.epoch(),now)==1;
+                UPDATE RT_RUN SET HEARTBEAT_AT = ?,LEASE_UNTIL = ? WHERE ID = ? AND LEASE_OWNER = ? AND LEASE_EPOCH = ? AND STATUS = 'RUNNING' AND DEADLINE_AT > ? AND LEASE_UNTIL > ?
+                """,now,TimeCodec.plusSeconds(now,30),c.id(),c.owner(),c.epoch(),now,now)==1;
     }
     public String startCall(Claim c,long credentialRevision){
         return tx.execute(status->{
@@ -279,8 +285,10 @@ public class RunService {
     }
     public void finish(Claim c,String call,ModelExecution result,String failure,long elapsed){
         tx.executeWithoutResult(status->{
-            var r=row(c.id(),true);if(!owned(r,c))return;
-            String now=time.now();boolean cancelled="CANCEL_REQUESTED".equals(r.get("STATUS"));
+            var r=row(c.id(),true);
+            String now=time.now();
+            if(!owned(r,c,now))return;
+            boolean cancelled="CANCEL_REQUESTED".equals(r.get("STATUS"));
             String state=cancelled?"CANCELLED":result!=null?"SUCCEEDED":"FAILED";
             if(call!=null){
                 var cr=jdbc.queryForMap("SELECT STATUS,DISPATCH_INTENT_AT FROM RT_MODEL_CALL WHERE ID = ? AND RUN_ID = ? FOR UPDATE",call,c.id());
