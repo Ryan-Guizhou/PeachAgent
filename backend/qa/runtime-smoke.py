@@ -293,6 +293,28 @@ try:
     c.call("POST",target+"/conversations/"+context_conv["id"]+"/runs",oversized,key=key(),expected=422)
     assert len(REQUESTS)==before
     print("PASS: partial output persisted, exact Last-Event-ID replay, same-conversation concurrency, explicit uncertain retry and context clipping")
+    # Real API history exceeds one UI page, and the backward cursor never duplicates a turn.
+    long_chat=c.call("POST",p+"/conversations",{"title":"Long history QA"})
+    for index in range(12):
+        history_body={"modelId":model["id"],"text":f"History message {index:02d}","promptVersionId":None,"variables":{},"maxOutputTokens":32}
+        history_run=c.call("POST",p+"/conversations/"+long_chat["id"]+"/runs",history_body,key=key())
+        wait(c,p,history_run)
+    history_path=p+"/conversations/"+long_chat["id"]+"/messages"
+    tail=c.call("GET",history_path+"?latest=true&limit=20")
+    assert [row["seq"] for row in tail]==list(range(5,25)),tail
+    older=c.call("GET",history_path+"?before="+str(tail[0]["seq"])+"&limit=20")
+    assert [row["seq"] for row in older]==list(range(1,5)),older
+    assert c.call("GET",history_path+"?after=0&limit=4")==older
+    assert c.call("GET",history_path+"?before=1&limit=20")==[]
+    c.call("GET",history_path+"?before=5&after=1",expected=422)
+    other.call("GET",history_path+"?latest=true",expected=404)
+    answer=older[1]
+    feedback_path=p+"/conversations/"+long_chat["id"]+"/messages/"+answer["id"]+"/feedback"
+    c.call("POST",feedback_path,{"rating":"UP","reason":None})
+    assert c.call("GET",history_path+"?before=5")[1]["feedbackRating"]=="UP"
+    c.call("POST",feedback_path,{"rating":"DOWN","reason":None})
+    assert c.call("GET",history_path+"?before=5")[1]["feedbackRating"]=="DOWN"
+    print("PASS: real long history tail, strict backward cursor, legacy forward paging, cross-tenant denial and feedback update")
     # A retry creates a new persisted run; same key cannot start another call.
     before=len(REQUESTS)
     retry_key=key()

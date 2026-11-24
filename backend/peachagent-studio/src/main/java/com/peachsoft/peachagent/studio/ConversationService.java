@@ -47,13 +47,27 @@ public class ConversationService {
         if(rows.isEmpty())throw IdentityService.missing();return rows.getFirst();
     }
     public List<Map<String,Object>> messages(ScopeContext s,String id,long after,int limit){
+        return messages(s,id,after,limit,null,false);
+    }
+
+    /** 新客户端读取尾页及严格向前游标；旧 after 语义保持不变，统一按消息顺序返回。 */
+    public List<Map<String,Object>> messages(ScopeContext s,String id,long after,int limit,Long before,boolean latest){
+        if(after<0||(before!=null&&before<1)||(after>0&&(latest||before!=null)))
+            throw new DomainException("INVALID_CURSOR",422,"Invalid message cursor");
         require(s,id,false);
-        return jdbc.queryForList("""
-                SELECT ID,SEQ,ROLE,CONTENT,STATUS,REPLY_TO_MESSAGE_ID,PREFERRED_REPLY_ID,FINISHED_AT,CREATED_AT
-                FROM CHAT_MESSAGE WHERE TENANT_ID = ? AND WORKSPACE_ID = ? AND PROJECT_ID = ? AND CONVERSATION_ID = ? AND SEQ > ?
-                ORDER BY SEQ LIMIT ?
-                """,s.tenantId(),s.workspaceId(),s.requireProject(),id,Math.max(0,after),Math.min(100,Math.max(1,limit)))
-                .stream().map(r->JsonData.view(mapper,r)).toList();
+        boolean backwards=latest||before!=null;
+        String sql="""
+                SELECT M.ID,M.SEQ,M.ROLE,M.CONTENT,M.STATUS,M.REPLY_TO_MESSAGE_ID,M.PREFERRED_REPLY_ID,
+                    M.FINISHED_AT,M.CREATED_AT,F.RATING AS FEEDBACK_RATING
+                FROM CHAT_MESSAGE M LEFT JOIN CHAT_FEEDBACK F ON F.TENANT_ID = M.TENANT_ID
+                    AND F.WORKSPACE_ID = M.WORKSPACE_ID AND F.PROJECT_ID = M.PROJECT_ID
+                    AND F.CONVERSATION_ID = M.CONVERSATION_ID AND F.MESSAGE_ID = M.ID AND F.ACTOR_USER_ID = ?
+                WHERE M.TENANT_ID = ? AND M.WORKSPACE_ID = ? AND M.PROJECT_ID = ? AND M.CONVERSATION_ID = ?
+                """;
+        sql+=backwards?" AND M.SEQ < ? ORDER BY M.SEQ DESC LIMIT ?":" AND M.SEQ > ? ORDER BY M.SEQ LIMIT ?";
+        var rows=jdbc.queryForList(sql,s.userId(),s.tenantId(),s.workspaceId(),s.requireProject(),id,
+                backwards?(before==null?Long.MAX_VALUE:before):after,Math.min(100,Math.max(1,limit)));
+        return (backwards?rows.reversed():rows).stream().map(row->JsonData.view(mapper,row)).toList();
     }
     @Transactional
     public void feedback(ScopeContext s,String id,String message,Feedback input){
