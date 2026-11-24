@@ -64,7 +64,7 @@
   const data = () => S.state.modelRegistry;
   const rawModel = value => { const key = typeof value === 'object' ? value?.id : value; return data().models.find(m => m.id === key) || data().models.find(m => m.name === key || (m.aliases || []).includes(key)); };
   const provider = id => data().providers.find(p => p.id === id);
-  const available = m => Boolean(m && m.enabled !== false && !m.archived && provider(m.providerId)?.enabled !== false && !provider(m.providerId)?.archived && provider(m.providerId));
+  const available = m => Boolean(m && m.enabled !== false && !m.archived && provider(m.providerId)?.enabled !== false && !provider(m.providerId)?.archived && provider(m.providerId) && S.Credentials?.isUsable('model',provider(m.providerId)?.credentialRef)!==false);
   const hasCaps = (m, needed = []) => needed.every(c => m.capabilities?.[c] === true);
   function syncLegacy() {
     S.state.models = data().models.map(m => ({ id: m.id, name: m.name, provider: provider(m.providerId)?.name || '连接已删除', type: types[m.type], modelType: m.type, endpoint: provider(m.providerId)?.baseUrl || '', status: available(m) ? 'connected' : 'disabled', capabilities: copy(m.capabilities), archived: !!m.archived }));
@@ -102,6 +102,7 @@
     if (options.enabled !== false) {
       if (m.enabled === false || m.archived) fail('MODEL_DISABLED', `“${m.name}”已停用或归档，请启用后再运行。`);
       const p = provider(m.providerId); if (!p || p.enabled === false || p.archived) fail('PROVIDER_DISABLED', `“${m.name}”的服务商连接不可用，请在模型中心检查。`);
+      S.Credentials?.assertUsable('model',p.credentialRef);
     }
     return copy(m);
   }
@@ -117,6 +118,8 @@
       if (!hasCaps(value, options.capabilities)) fail('MODEL_CAPABILITY_MISMATCH', '此运行固定的模型快照缺少所需能力。');
       if (value.providerId !== current.providerId && !provider(value.providerId)) fail('PROVIDER_DISABLED', '运行固定的服务商连接已不存在。');
       const original = provider(value.providerId); if (!original || !original.enabled || original.archived) fail('PROVIDER_DISABLED', '运行固定的服务商连接已停用或归档。');
+      S.Credentials?.assertUsable('model',original.credentialRef);
+      S.Credentials?.assertUsable('model',value.provider?.credentialRef);
     }
     return current;
   }
@@ -216,11 +219,13 @@
     if (!['success','timeout','unauthorized'].includes(scenario)) fail('CONFIG_INVALID', '未知的连接校验场景。');
     const p = provider(id); if (!p) fail('PROVIDER_NOT_FOUND', '连接不存在。'); if (!p.enabled || p.archived) fail('PROVIDER_DISABLED', '连接已停用或归档。');
     if (!checkUrl(p.baseUrl)) fail('CONFIG_INVALID', '连接地址格式不正确。');
+    S.Credentials?.assertUsable('model',p.credentialRef);
     const result = { status: scenario === 'timeout' ? 'timeout' : scenario === 'unauthorized' ? 'unauthorized' : 'passed', simulated: true, testedAt: now(), message: scenario === 'timeout' ? '模拟超时；可调整超时或重试。' : scenario === 'unauthorized' ? '模拟凭证被拒绝；请检查引用配置。' : '地址与配置校验通过；真实服务连通性尚未验证。' };
     return mutate(d => { d.providers.find(x => x.id === id).validation = result; return result; });
   }
   function discover(id) {
     const p = provider(id); if (!p || !p.enabled || p.archived) fail('PROVIDER_DISABLED', '请先启用服务商连接。');
+    S.Credentials?.assertUsable('model',p.credentialRef);
     const candidates = p.protocol === 'anthropic' ? ['llm'] : p.protocol === 'ollama' ? ['llm','embedding'] : ['cohere','jina','voyage'].includes(p.protocol) ? (p.protocol === 'cohere' ? ['llm','embedding','rerank'] : ['embedding','rerank']) : p.protocol === 'custom' ? Object.keys(types) : ['llm','embedding'];
     return candidates.map(type => ({ providerId: id, type, name: p.name + ' · ' + types[type] + '示例', modelId: 'discovered-demo-' + type, adapter: recommendedAdapter(p.protocol,type) || 'custom-http', requestPath: p.protocol === 'custom' ? '/demo/' + type : '', capabilities: Object.fromEntries(Object.keys(caps).map(c => [c,false])), config: typeConfig(type), enabled: true, simulated: true, imported: data().models.some(m => m.providerId === id && m.modelId === 'discovered-demo-' + type && m.type === type) }));
   }
