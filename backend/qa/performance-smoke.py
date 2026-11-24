@@ -157,11 +157,13 @@ def seed(scope):
     tenant, workspace, project, actor, model, provider = (
         quote_id(scope[k]) for k in ("tenant", "workspace", "project", "user", "model", "provider"))
     mysql(f"""
-CREATE TEMPORARY TABLE PERF_DIGIT (N INT PRIMARY KEY);
-INSERT INTO PERF_DIGIT VALUES (0),(1),(2),(3),(4),(5),(6),(7),(8),(9);
 START TRANSACTION;
 INSERT INTO RT_RUN (ID,TENANT_ID,WORKSPACE_ID,PROJECT_ID,ACTOR_USER_ID,RUN_TYPE,TRACE_ID,
     IDEMPOTENCY_KEY,REQUEST_HASH,STATUS,LIMIT_SNAPSHOT,QUEUED_AT,DEADLINE_AT,FINISHED_AT,CREATED_AT,UPDATED_AT)
+WITH PERF_DIGIT AS (
+    SELECT 0 AS N UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+    UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9
+)
 SELECT UUID(),{tenant},{workspace},{project},{actor},'MODEL_DEBUG',REPLACE(UUID(),'-',''),
     CONCAT('perf-seed-',A.N*10000+B.N*1000+C.N*100+D.N*10+E.N),
     UNHEX(SHA2(CONCAT('seed-',A.N,B.N,C.N,D.N,E.N),256)),'SUCCEEDED',JSON_OBJECT(),
@@ -180,6 +182,11 @@ COMMIT;
 """)
     counts = mysql("SELECT (SELECT COUNT(*) FROM RT_RUN),(SELECT COUNT(*) FROM RT_MODEL_CALL);")
     assert counts == f"{SEED_COUNT}\t{SEED_COUNT}", counts
+
+
+class FixtureServer(ThreadingHTTPServer):
+    request_queue_size = 128
+    daemon_threads = True
 
 
 class Fixture(BaseHTTPRequestHandler):
@@ -254,15 +261,19 @@ def p95(values):
 def read_benchmark(scope):
     barrier = threading.Barrier(50)
     paths = page_paths(scope)
+    next_paths = []
+    for path in paths:
+        last = scope["client"].call("GET", path)[-1]
+        next_paths.append(path + "&" + urllib.parse.urlencode({"before": last["createdAt"], "beforeId": last["id"]}))
 
     def reader(index):
         client = Client(scope["client"])
         path = paths[index % 2]
         values = []
         barrier.wait(timeout=30)
-        for _ in range(10):
+        for page in range(10):
             start = time.monotonic()
-            rows = client.call("GET", path)
+            rows = client.call("GET", path if page % 2 == 0 else next_paths[index % 2])
             values.append((time.monotonic() - start) * 1000)
             assert len(rows) == 50 and all(row["createdAt"] == HISTORY_TIME for row in rows)
         return index % 2, values
@@ -354,13 +365,21 @@ FROM BUDGET_RESERVATION B JOIN RT_MODEL_CALL C ON C.ID=B.CALL_ID
 WHERE R.IDEMPOTENCY_KEY LIKE 'perf-live-%';
 SELECT SUM(INFLIGHT_COUNT) FROM BUDGET_POLICY;
 SELECT COUNT(*) FROM RT_RUN WHERE STATUS IN ('QUEUED','RUNNING','CANCEL_REQUESTED');
+SELECT COUNT(*) FROM RT_RUN WHERE IDEMPOTENCY_KEY LIKE 'perf-live-%';
+SELECT SUM(CONSUMED_CALLS),SUM(CONSUMED_TOKENS),SUM(CONSUMED_COST),
+    SUM(RESERVED_CALLS),SUM(RESERVED_TOKENS),SUM(RESERVED_COST),SUM(UNKNOWN_CALLS)
+FROM BUDGET_BUCKET;
 """).splitlines()
     run, reserved = [line.split("\t") for line in values[:2]]
     assert list(map(int, run[:5])) == [expected, expected, expected, expected, expected * 15], run
     assert abs(float(run[5]) - expected * .01) < .0001 and int(run[6]) == expected, run
     assert list(map(int, reserved[:5])) == [expected * 3, expected * 3, expected * 3, expected * 3, expected * 45], reserved
     assert abs(float(reserved[5]) - expected * .03) < .0001, reserved
-    assert values[2:] == ["0", "0"], values
+    assert values[2:5] == ["0", "0", str(expected)], values
+    bucket = values[5].split("\t")
+    assert [int(bucket[0]), int(bucket[1])] == [expected * 3, expected * 45], bucket
+    assert abs(float(bucket[2]) - expected * .03) < .0001, bucket
+    assert all(float(value) == 0 for value in bucket[3:]), bucket
     return {"liveRuns": expected, "providerDispatches": expected, "settledReservations": expected * 3,
             "inflight": 0, "unfinished": 0}
 
@@ -373,7 +392,7 @@ def main():
               "memoryKiB": int(re.search(r"MemTotal:\s+(\d+)", Path("/proc/meminfo").read_text()).group(1)),
               "status": "INCOMPLETE"}
     REPORT.parent.mkdir(parents=True, exist_ok=True)
-    server = ThreadingHTTPServer(("127.0.0.1", 18081), Fixture)
+    server = FixtureServer(("127.0.0.1", 18081), Fixture)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
         scopes = setup()
