@@ -28,7 +28,7 @@ jobs:
           DB_USER: peachagent
           DB_PASSWORD: ci-only-db
           REDIS_PASSWORD: ci-only-redis
-        run: docker compose -f compose.dev.yml up -d --wait mysql redis
+        run: docker compose -f compose.dev.yml up -d --wait mysql redis mailpit
       - name: Verify API and worker startup
         env:
           DB_URL: jdbc:mysql://127.0.0.1:3306/peachagent
@@ -47,6 +47,7 @@ jobs:
             kill -0 "$API"; sleep 2
           done
           curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'
+          python3 backend/qa/iam-smoke.py
           java -jar "$JAR" --spring.profiles.active=worker > worker.log 2>&1 &
           WORKER=$!
           for i in $(seq 1 40); do
