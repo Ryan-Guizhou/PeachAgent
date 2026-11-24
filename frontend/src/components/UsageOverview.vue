@@ -12,7 +12,7 @@ let generation=0
 const tr=(zh:string,en:string)=>props.locale==='en-US'?en:zh
 const display=(value:unknown)=>value===null||value===undefined?tr('未知','Unknown'):String(value)
 const remaining=(value:unknown,limit:unknown)=>limit===null||limit===undefined?tr('无限额','No cap'):display(value)
-const scopeLabel=(type:string)=>({TENANT:tr('租户','Tenant'),WORKSPACE:tr('工作空间','Workspace'),PROJECT:tr('项目','Project')}[type]||type)
+const scopeLabel=(type:string)=>{const labels:Record<string,string>={TENANT:tr('租户','Tenant'),WORKSPACE:tr('工作空间','Workspace'),PROJECT:tr('项目','Project')};return labels[type]||type}
 async function load(){
   const request=++generation,scope=props.scope
   overview.value=[];summary.value=[];error.value=''
