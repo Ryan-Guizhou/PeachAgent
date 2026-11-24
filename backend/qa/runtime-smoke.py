@@ -11,6 +11,7 @@ import urllib.error
 import urllib.request
 import uuid
 import wave
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 BASE = "http://127.0.0.1:8080"
@@ -172,6 +173,23 @@ try:
     wait(c,p,retry)
     assert len(REQUESTS)==before+1
     assert "Fixture answer" in event_text(c,p,retry)
+    # Concurrent submissions using the same idempotency key must persist one run and dispatch once.
+    concurrent_key=key()
+    concurrent_body={"input":{"text":"concurrent"},"audioBase64":None,"maxOutputTokens":None}
+    before=len(REQUESTS)
+    def concurrent_debug(_):
+        duplicate=Client()
+        for cookie in c.jar:
+            duplicate.jar.set_cookie(cookie)
+        duplicate.csrf=c.csrf
+        return duplicate.call("POST",p+"/models/"+model["id"]+"/debug",concurrent_body,key=concurrent_key)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        duplicates=list(pool.map(concurrent_debug,range(4)))
+    assert len({item["id"] for item in duplicates})==1, duplicates
+    wait(c,p,duplicates[0])
+    assert len(REQUESTS)==before+1
+    assert all(x["inflightCount"]==0 for x in c.call("GET",p+"/budgets"))
+    print("PASS: four concurrent idempotent submissions, one provider dispatch and budget settlement")
     # Stop a dispatched request, not merely an unclaimed queue entry.
     slow=c.call("POST",w+"/models",{"providerId":providers["NONE"][0],"name":"Slow fixture",
       "externalModelId":"slow","modelType":"LLM","protocolKey":model["protocolKey"],"protocolVersion":model["protocolVersion"],
