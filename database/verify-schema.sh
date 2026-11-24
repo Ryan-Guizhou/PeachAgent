@@ -3,21 +3,32 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 NAME="peachagent-schema-$$"
 PASSWORD="$(openssl rand -hex 16)"
+MYSQL_IMAGE="${MYSQL_IMAGE:-mysql:8.4}"
 cleanup() { docker rm -f "$NAME" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
-docker run -d --name "$NAME" -e MYSQL_ROOT_PASSWORD="$PASSWORD" mysql:8.4 --lower-case-table-names=1 --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_ai_ci >/dev/null
+docker run -d --name "$NAME" -e MYSQL_ROOT_PASSWORD="$PASSWORD" "$MYSQL_IMAGE" --lower-case-table-names=1 --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci >/dev/null
 sql() { docker exec -i -e MYSQL_PWD="$PASSWORD" "$NAME" mysql --protocol=TCP -uroot --batch --skip-column-names --default-character-set=utf8mb4 "$@"; }
 for i in $(seq 1 90); do
     if sql -e "SELECT 1" >/dev/null 2>&1; then break; fi
     sleep 2
 done
 sql < "$ROOT/database/INIT_DATABASE.SQL"
-sql PEACHAGENT < "$ROOT/backend/peachagent-bootstrap/src/main/resources/db/migration/V1__INITIAL_SCHEMA.sql"
+MIGRATIONS="$ROOT/backend/peachagent-bootstrap/src/main/resources/db"
+VERSION="$(sql -e 'SELECT VERSION()')"
+if [[ "$VERSION" == 5.7.* ]]; then
+    sql PEACHAGENT < "$MIGRATIONS/mysql57/V1__INITIAL_SCHEMA.sql"
+else
+    sql PEACHAGENT < "$MIGRATIONS/migration/V1__INITIAL_SCHEMA.sql"
+fi
 # Validate the forward migration from the original schema, then assert the added index.
-sql PEACHAGENT < "$ROOT/backend/peachagent-bootstrap/src/main/resources/db/migration/V2__RUNTIME_QUEUE_INDEX.sql"
+sql PEACHAGENT < "$MIGRATIONS/common/V2__RUNTIME_QUEUE_INDEX.sql"
+if [[ "$VERSION" == 5.7.* ]]; then
+    sql PEACHAGENT < "$MIGRATIONS/mysql57/V3__ENFORCE_CHECK_CONSTRAINTS.sql"
+    test "$(sql -e "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = 'PEACHAGENT'")" = 50
+fi
 test "$(sql -e "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'PEACHAGENT' AND TABLE_NAME = 'RT_RUN' AND INDEX_NAME = 'IX_RT_RUN_TENANT_STATUS_PROJECT'")" = 3
 test "$(sql -e "SELECT @@LOWER_CASE_TABLE_NAMES")" = 1
-test "$(sql -e "SELECT DEFAULT_COLLATION_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = 'PEACHAGENT'")" = utf8mb4_0900_ai_ci
+test "$(sql -e "SELECT DEFAULT_COLLATION_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = 'PEACHAGENT'")" = utf8mb4_unicode_ci
 test "$(sql -e "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'PEACHAGENT' AND TABLE_TYPE = 'BASE TABLE'")" = 25
 test "$(sql -e "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'PEACHAGENT' AND DATA_TYPE = 'char' AND CHARACTER_MAXIMUM_LENGTH = 14")" = 78
 test "$(sql -e "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'PEACHAGENT' AND DATA_TYPE IN ('date','datetime','timestamp','time')")" = 0
@@ -31,5 +42,6 @@ INSERT INTO IAM_TENANT (ID, OWNER_USER_ID, TENANT_CODE, NAME, STATUS, CURRENCY, 
 SQL
 test "$(sql PEACHAGENT -e "SELECT COUNT(*) FROM IAM_USER WHERE EMAIL_KEY='QA@EXAMPLE.INVALID' AND CREATED_AT >= '20261124030200' AND CREATED_AT < '20261124030201'")" = 1
 if sql PEACHAGENT -e "UPDATE IAM_USER SET UPDATED_AT='BAD'"; then echo "INVALID TIME ACCEPTED"; exit 1; fi
+if sql PEACHAGENT -e "UPDATE IAM_USER SET STATUS='INVALID'"; then echo "INVALID STATUS ACCEPTED"; exit 1; fi
 if sql PEACHAGENT -e "INSERT INTO IAM_WORKSPACE (ID,TENANT_ID,WORKSPACE_CODE,NAME,NAME_KEY,STATUS,CREATED_AT,UPDATED_AT) VALUES ('00000000-0000-7000-8000-000000000003','00000000-0000-7000-8000-000000000099','W-QA','QA','qa','ACTIVE','20261124030200','20261124030200')"; then echo "INVALID FOREIGN KEY ACCEPTED"; exit 1; fi
 echo "PASS: 25 TABLES, 78 TIME COLUMNS, 92 FOREIGN KEYS, CASE INSENSITIVE DATABASE AND IDENTIFIERS"

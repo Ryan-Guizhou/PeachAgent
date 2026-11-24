@@ -12,6 +12,7 @@ import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.ConnectionCallback;
 import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -37,6 +38,7 @@ public class RunService {
     private final JsonMapper mapper;
     private final TransactionTemplate tx;
     private final ArtifactStore artifacts;
+    private final boolean skipLockedSupported;
     public RunService(JdbcTemplate jdbc,IdGenerator ids,DatabaseTimeProvider time,IdentityService identity,
             ConversationService chat,PromptService prompts,ModelService models,BudgetService budgets,
             JsonMapper mapper,TransactionTemplate tx,ArtifactStore artifacts){
@@ -45,6 +47,9 @@ public class RunService {
         // 只调整 Runtime 短事务，不改变 IAM、配置及其他模块的事务隔离。
         this.tx=new TransactionTemplate(tx.getTransactionManager());
         this.tx.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
+        // MySQL 5.7 只有普通行锁；8.x 支持跳过被占用的候选行。
+        this.skipLockedSupported = Boolean.TRUE.equals(jdbc.execute(
+                (ConnectionCallback<Boolean>) connection -> connection.getMetaData().getDatabaseMajorVersion() >= 8));
     }
     public record ChatInput(String modelId,String text,String promptVersionId,Map<String,Object> variables,Integer maxOutputTokens) { }
     public record DebugInput(Map<String,Object> input,String audioBase64,Integer maxOutputTokens) { }
@@ -66,7 +71,7 @@ public class RunService {
 
     /** 所有产生子表记录的 Runtime 事务先获取租户父行共享锁，再锁 Run/Call/预算；受理及归档仍用排他锁。 */
     private void tenantShare(String tenantId){
-        jdbc.queryForObject("SELECT ID FROM IAM_TENANT WHERE ID = ? FOR SHARE",String.class,tenantId);
+        jdbc.queryForObject("SELECT ID FROM IAM_TENANT WHERE ID = ? LOCK IN SHARE MODE",String.class,tenantId);
     }
 
     /** 受理事务明确回滚才重试；原幂等键及摘要不变，不进行任何外部派发。 */
@@ -305,8 +310,8 @@ public class RunService {
             var candidate=candidates.getFirst();
             tenantShare(str(candidate,"TENANT_ID"));
             var rows=jdbc.queryForList("""
-                    SELECT * FROM RT_RUN WHERE ID = ? AND STATUS = 'QUEUED' AND DEADLINE_AT > ? FOR UPDATE SKIP LOCKED
-                    """,candidate.get("ID"),time.now());
+                    SELECT * FROM RT_RUN WHERE ID = ? AND STATUS = 'QUEUED' AND DEADLINE_AT > ? FOR UPDATE
+                    """ + (skipLockedSupported ? " SKIP LOCKED" : ""),candidate.get("ID"),time.now());
             if(rows.isEmpty())return null;
             var r=rows.getFirst();long epoch=n(r,"LEASE_EPOCH")+1;String id=str(r,"ID");
             jdbc.update("""
