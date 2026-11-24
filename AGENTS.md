@@ -25,6 +25,7 @@
 ## 数据与配置
 
 - SQL 关键字、标识符大写，业务值保留原始大小写；业务时间 UTC CHAR(14) yyyyMMddHHmmss。默认数据库 UTF8MB4_UNICODE_CI，兼容 MySQL 5.7/8.x；不得关闭外键、租户隔离、Flyway 校验或自动删除数据。
+- 本地已知测试账号仅允许显式 api,dev profile 加载的 Flyway V4；正常 API 不加载测试数据，禁止关闭 Flyway 校验或将开发库转为生产库。
 - QQ SMTP 默认 SSL 465，真实邮箱及授权码仅由环境变量注入；本地邮件测试 fixture 仅限隔离 QA。
 
 ## 验证

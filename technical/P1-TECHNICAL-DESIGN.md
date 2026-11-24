@@ -361,3 +361,8 @@ Refs #1
 ### P1 兼容与工程整改（#65）
 
 用户授权：QQ SMTP 默认 SSL 465；MySQL 5.7 兼容，新库排序规则 UTF8MB4_UNICODE_CI；保留原有业务时间、外键、租约与计量语义。MySQL 8.x 保留原始 V1，V2 路径移至 shared common（内容不变）；5.7 独立 V1 不使用具名 CHECK，V3 以 BEFORE INSERT / UPDATE 触发器落实原 104 条条件，NULL 保持 SQL UNKNOWN 语义。版本由 Flyway 配置器识别，已应用迁移不自动 repair。既有 8.x 非 unicode_ci 的 UTF8MB4 不区分大小写库仍可启动。5.7 已停止常规安全维护；生产推荐 8.x。MySQL 5.7/8.4 空库、API/Worker、真实 SMTP fixture、Runtime、故障和浏览器矩阵均由 CI 验证，性能基准继续使用 8.4；不将测试 fixture 等同真实 QQ/外部模型调用。P1 #18 保持开放。
+
+
+### P1 本地开发种子数据（#67）
+
+仅显式 `api,dev` profile 且回环地址的 API 加载 `db/dev/V4__DEVELOPMENT_SEED.sql`。该版本迁移适用于 MySQL 5.7/8.x，在既有迁移后创建合成管理员和普通用户、两个独立租户及各自默认空间/项目/三级预算，密码为现有 Argon2id 兼容哈希。普通 API 不加载 V4，开发库不能靠关闭 dev profile 绕过 Flyway 已应用迁移校验成为生产库。正式管理员仍使用原 admin-init，不写入已知默认密码；不预置真实供应商或虚构用量。账号和本地启动方式见 [后端 README](../backend/README.md)。

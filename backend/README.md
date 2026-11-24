@@ -68,7 +68,8 @@ $rng.Dispose()
 | CREDENTIAL_KEK_VERSION | 1 | 当前 KEK 标识，API/Worker 一致 |
 | PEACHAGENT_ALLOWED_INTERNAL_ORIGINS | 空 | 部署者明确允许的内部模型 origin，逗号分隔，例如 http://127.0.0.1:11434；默认只允许公共 HTTPS:443，禁止元数据地址 |
 | PEACHAGENT_ARTIFACT_DIRECTORY | ./data/artifacts | API/Worker 同一受保护目录；不同工作目录应使用绝对路径，非公开 Web 根目录 |
-| ADMIN_EMAIL / ADMIN_PASSWORD | admin-init 必填 | 可选首次管理员初始化；密码至少 12 字符，无默认管理员 |
+| ADMIN_EMAIL / ADMIN_PASSWORD | admin-init 必填 | 正式环境可选首次管理员初始化；密码至少 12 字符 |
+| dev profile | 显式启用 | Flyway V4 初始化本地测试账号及资源，不能用于生产 |
 
 重要：新库使用 UTF8MB4 / UTF8MB4_UNICODE_CI，标识符要求 LOWER_CASE_TABLE_NAMES=1 或 2（Compose 固定 1）。不能在已有卷上直接修改该设置。已有 UTF8MB4 的不区分大小写排序规则仍允许，避免强制转换现有 8.4 数据。Flyway 自动识别 5.7 / 8.x：8.x 保留原始 V1 校验和；5.7 使用独立 V1、共享 V2 和 V3 等价触发器，保持原有 104 条 CHECK 的语义。不要关闭 Flyway 校验、自动 repair 或清库；已有失败迁移或跨版本迁移须备份后单独处理。5.7 已停止常规安全维护，生产推荐受支持的 8.x。外部 5.7 数据库需启用 InnoDB、DYNAMIC 行格式、足够的索引长度，并授予迁移账号 DDL、外键和 TRIGGER 权限（开启 binlog 时由 DBA 审核触发器创建权限）。Flyway V1 创建 25 张业务表；业务时间以 UTC CHAR(14) yyyyMMddHHmmss 存储。SQL 标识符、关键字大写，密钥及外部模型 ID 保持精确原值。
 
@@ -102,10 +103,10 @@ set +a
 
 ## 4. 启动 API、Worker 与前端
 
-**终端 A**（已加载 .env）：API 执行 Flyway 初始化和校验，等待健康检查 UP。
+**终端 A**（已加载 .env）：本地开发验证推荐同时启用 `api,dev`，Flyway 自动初始化或升级数据库后补齐开发数据。API 默认只监听 127.0.0.1，验证码/QQ SMTP 仍使用原有逻辑，但登录不需要发送邮件。等待健康检查 UP。
 
 ```bash
-java -jar backend/peachagent-bootstrap/target/peachagent-bootstrap-1.0.0-SNAPSHOT.jar --spring.profiles.active=api
+java -jar backend/peachagent-bootstrap/target/peachagent-bootstrap-1.0.0-SNAPSHOT.jar --spring.profiles.active=api,dev
 ```
 
 另一个终端验证：`curl http://127.0.0.1:8080/actuator/health`（Windows PowerShell 使用 `Invoke-RestMethod http://127.0.0.1:8080/actuator/health`）。期望 status=UP；数据库及 SMTP 不可用时排查真实依赖。
@@ -128,7 +129,7 @@ npm run dev
 
 ### IntelliJ IDEA
 
-打开 backend/pom.xml 为 Maven 工程，Project SDK / Maven Runner JRE 均设 JDK 21。创建两个 Spring Boot/Application 运行配置，主类 com.peachsoft.peachagent.PeachAgentApplication、classpath 模块 peachagent-bootstrap、Working directory 为仓库根目录；Program arguments 分别为 --spring.profiles.active=api 和 --spring.profiles.active=worker。Environment variables 中导入同一 .env（IDE 支持时）或手动填入键值；不要共享含秘密的运行配置。先启动 API，再启动 Worker。前端可使用独立 npm dev 运行配置，目录 frontend。
+打开 backend/pom.xml 为 Maven 工程，Project SDK / Maven Runner JRE 均设 JDK 21。创建两个 Spring Boot/Application 运行配置，主类 com.peachsoft.peachagent.PeachAgentApplication、classpath 模块 peachagent-bootstrap、Working directory 为仓库根目录；Program arguments 分别为 --spring.profiles.active=api,dev 和 --spring.profiles.active=worker。Environment variables 中导入同一 .env（IDE 支持时）或手动填入键值；不要共享含秘密的运行配置。先启动 API，再启动 Worker。前端可使用独立 npm dev 运行配置，目录 frontend。
 
 ### 同源构建模式（可选）
 
@@ -142,7 +143,7 @@ cd ..
 API 终端重新加载配置，将 PUBLIC_ORIGIN 改为 http://localhost:8080（Bash：`export PUBLIC_ORIGIN=http://localhost:8080`；PowerShell：`$env:PUBLIC_ORIGIN='http://localhost:8080'`）。从根目录执行：
 
 ```bash
-java -jar backend/peachagent-bootstrap/target/peachagent-bootstrap-1.0.0-SNAPSHOT.jar --spring.profiles.active=api --spring.web.resources.static-locations=file:./frontend/dist/
+java -jar backend/peachagent-bootstrap/target/peachagent-bootstrap-1.0.0-SNAPSHOT.jar --spring.profiles.active=api,dev --spring.web.resources.static-locations=file:./frontend/dist/
 ```
 
 Worker 仍须独立启动。访问 http://localhost:8080/#/home。此方式对应 CI 的同源浏览器测试；不是生产镜像部署方案。
@@ -167,7 +168,7 @@ Worker 仍须独立启动。访问 http://localhost:8080/#/home。此方式对�
 
 地址为协议前缀示例，须以账户实际端点、模型可用性和接口兼容性为准；不代表真实厂商验收通过。OpenAI-compatible 并非所有兼容模型都支持流式 usage 或 b64 PNG/WAV 等响应约定。STT 仅接受不超过 10 MiB 的 WAV；媒体产物限 20 MiB、默认有效期 24 小时。使用内部 HTTP 连接仅允许可信开发端点，并让 API/Worker 同时加载 allowlist 后重启。
 
-可选首个管理员：在独立终端加载 .env、设置 ADMIN_EMAIL 和 ADMIN_PASSWORD 后，以 `--spring.profiles.active=admin-init` 启动同一 jar 一次，不与正常 API profile 混用；无默认管理员，已存在时拒绝重复创建。初始化完成后移除该终端的管理员密码环境变量。常规用户注册不需要管理员初始化。
+可选首个管理员：在独立终端加载 .env、设置 ADMIN_EMAIL 和 ADMIN_PASSWORD 后，以 `--spring.profiles.active=admin-init` 启动同一 jar 一次，不与正常 API profile 混用；正式环境无默认管理员，已存在时拒绝重复创建。仅正常未加载 dev 种子的数据库使用 admin-init。初始化完成后移除该终端的管理员密码环境变量。常规用户注册不需要管理员初始化。
 
 ## 6. 验证、停止与排障
 
@@ -212,3 +213,16 @@ SELECT @@LOWER_CASE_TABLE_NAMES, @@CHARACTER_SET_DATABASE, @@COLLATION_DATABASE;
 ### Java 规范
 
 按仓库 AGENTS.md 执行；本地使用 `mvn -f backend/pom.xml spotless:apply`，提交前 `mvn -f backend/pom.xml verify`。代码格式和类型级中文 Javadoc 由 CI 检查。
+
+## 本地开发默认账号（Flyway V4）
+
+| 角色 | 邮箱 | 初始明文密码 |
+| --- | --- | --- |
+| 平台管理员 | admin@peachagent.example.invalid | `PeachAgent-Dev-Admin-2026!` |
+| 普通用户 | user@peachagent.example.invalid | `PeachAgent-Dev-User-2026!` |
+
+以上是公开、合成、仅供本机测试的账号，不是真实用户或凭证；SQL 只存 Argon2id 哈希。两套个人租户各自包含默认工作空间、默认项目和三条预算策略（并发 8/4/2，180 秒单次运行上限）。管理员不获得其他租户的私有资源权限。没有预置真实模型密钥、供应商调用和虚构用量。
+
+- IDE 的 Active profiles 填 `api,dev`（或 Program arguments 填 `--spring.profiles.active=api,dev`），Worker 仍用 `worker`。开发环境关闭 mail 健康探测以便未配置 QQ SMTP 也可登录；实际注册和找回密码仍须配置 SMTP。浏览器使用与 PUBLIC_ORIGIN 一致的地址；Vite 本地默认端口 5173。
+- V4 位于 `db/dev`，仅本地 dev API 的 Flyway 加载；已应用的 V1/V2/V3 不改动。正常 `api` 不插入默认账号，且不能通过关闭 dev profile 将已含 V4 的数据库转为正式环境，Flyway 校验会拒绝缺失的迁移。请用独立数据库部署正式环境，保留校验，不手工删除历史、种子或用户数据。已有本地数据不会覆盖；保留邮箱/UUID 冲突时迁移失败，需人工确认后处理。开发数据库重复启动不会重新设置密码或覆盖修改。
+- 数据库连接保留现有本地默认值，并支持 DB_URL、DB_USER、DB_PASSWORD 环境变量覆盖；正式环境务必覆盖为独立最小权限账号和安全密码。若已有 Flyway 失败记录，先诊断，不能自动 repair 或清库。
