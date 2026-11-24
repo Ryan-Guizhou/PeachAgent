@@ -48,6 +48,7 @@ jobs:
           DB_PASSWORD: ci-only-db
           REDIS_PASSWORD: ci-only-redis
           COOKIE_SECURE: 'false'
+          MYSQL_ROOT_PASSWORD: ci-only-root
           PEACHAGENT_ALLOWED_INTERNAL_ORIGINS: http://127.0.0.1:18081
         run: |
           set -euo pipefail
@@ -63,6 +64,21 @@ jobs:
             kill -0 "$API"; sleep 2
           done
           curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'
+          # Both Mailpit HTTP and SMTP listeners must be ready before challenge creation.
+          python3 - <<'PY'
+          import socket, time, urllib.request
+          for _ in range(60):
+              try:
+                  with socket.create_connection(("127.0.0.1",1025),timeout=2) as smtp:
+                      assert smtp.recv(256).startswith(b"220")
+                  with urllib.request.urlopen("http://127.0.0.1:8025/api/v1/messages",timeout=2) as response:
+                      assert response.status==200
+                  break
+              except (OSError,AssertionError):
+                  time.sleep(1)
+          else:
+              raise RuntimeError("Mailpit readiness timeout")
+          PY
           python3 backend/qa/iam-smoke.py
           java -jar "$JAR" --spring.profiles.active=worker > worker.log 2>&1 &
           WORKER=$!
@@ -79,6 +95,9 @@ jobs:
           WORKER=$!
           kill -0 "$WORKER"
           node frontend/qa/p1-browser-smoke.mjs
+          # Execute the real JDBC rollover test only in this isolated integration database.
+          PEACHAGENT_ISOLATED_FAULT_TEST=1 mvn -B -f backend/pom.xml -pl peachagent-bootstrap -am -Dtest=BudgetRolloverDatabaseTest -Dsurefire.failIfNoSpecifiedTests=false test
+          PEACHAGENT_ISOLATED_FAULT_TEST=1 PEACHAGENT_TEST_API_PID="$API" PEACHAGENT_TEST_API_JAR="$JAR" python3 backend/qa/middleware-recovery-smoke.py
       - name: Audit frontend dependencies
         if: always()
         working-directory: frontend
