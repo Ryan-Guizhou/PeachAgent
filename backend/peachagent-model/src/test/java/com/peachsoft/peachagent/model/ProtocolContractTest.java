@@ -1,6 +1,7 @@
 package com.peachsoft.peachagent.model;
 
 import com.peachsoft.peachagent.common.DomainException;
+import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -24,7 +25,7 @@ class ProtocolContractTest {
         assertThrows(DomainException.class,()->registry.resolvePinned(new ProtocolKey("test.native","v1"),"LLM","CHAT","test.adapter","2.0.0"));
     }
     @Test void envelopeBindsScopeAndRevision(){
-        byte[] key=new byte[32];new java.security.SecureRandom().nextBytes(key);
+        byte[] key=new byte[32];new SecureRandom().nextBytes(key);
         var cipher=new CredentialCipher(Base64.getEncoder().encodeToString(key),"1");
         var encrypted=cipher.encrypt("caseSensitive-Secret","tenant|space|id|1|origin");
         assertEquals("caseSensitive-Secret",cipher.decrypt(encrypted,"tenant|space|id|1|origin"));
