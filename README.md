@@ -9,13 +9,19 @@ PeachAgent 是平台名称，OTRYX Studio 是当前控制台原型名称。
 
 PeachAgent 面向个人开发者，连接 Agent/工作流设计、受控执行、知识检索、质量评测、资源复用和应用发布。每位用户拥有独立租户，可在多个工作空间中管理项目，自行配置模型和工具凭证。
 
-**当前可体验的是 OTRYX Studio 浏览器交互原型。** 真实服务端、正式模型/工具接入和可部署 Compose 包尚未交付；P1 已获技术评审批准并进入开发，尚未验收；P2–P7 仍待各期技术评审。原型演示与产品验收分别记录。
+**P1 正式基础工作台主体代码已合入 main，尚未整期验收。** Java API/Worker、MySQL、Redis 和 Vue 控制台已通过构建与本地协议测试服务集成验证。外部供应商真实调用、故障/并发性能及完整 UI 验收以 [P1 验收 Issue #18](https://github.com/Ryan-Guizhou/PeachAgent/issues/18) 为准；P2–P7 尚未获开工批准。原型仍是未来阶段的交互参照。
 
 - 查看背景、完整需求和排期：[产品需求文档](requirements/PRD-PeachAgent.md)。
 - 体验已有交互：[原型使用说明](prototype/README.md)。
 - 查看开发边界：[技术基线](technical/README.md)与[评审及交付流程](ci/README.md)。
 
 <!-- doc-section:quick-start -->
+## 启动 P1 开发环境
+
+- [服务端启动与配置](backend/README.md)：JDK 21、Maven、Docker Compose 开发依赖及 API/Worker。
+- [正式 Vue 控制台](frontend/README.md)：Node.js、依赖安装与代理配置。
+- [已批准 P1 技术方案](technical/P1-TECHNICAL-DESIGN.md) · [MySQL 初始迁移](backend/peachagent-bootstrap/src/main/resources/db/migration/V1__INITIAL_SCHEMA.sql)。
+
 ## 体验原型
 
 取得仓库后，在仓库根目录运行以下命令，需要 Python 3 和现代浏览器：

@@ -163,6 +163,29 @@ try:
     usage=c.call("GET",p+"/usage?from=20000101000000&to=20990101000000")
     assert len(usage)>=len(descriptors)+1 and any(x["totalTokens"]==15 for x in usage)
     assert all(x["inflightCount"]==0 for x in c.call("GET",p+"/budgets"))
+    # A retry creates a new persisted run; same key cannot start another call.
+    before=len(REQUESTS)
+    retry_key=key()
+    retry=c.call("POST",p+"/runs/"+run["id"]+"/retry",{"acknowledgeUnknown":True},key=retry_key)
+    assert retry["id"]!=run["id"]
+    assert c.call("POST",p+"/runs/"+run["id"]+"/retry",{"acknowledgeUnknown":True},key=retry_key)["id"]==retry["id"]
+    wait(c,p,retry)
+    assert len(REQUESTS)==before+1
+    assert "Fixture answer" in event_text(c,p,retry)
+    # Stop a dispatched request, not merely an unclaimed queue entry.
+    slow=c.call("POST",w+"/models",{"providerId":providers["NONE"][0],"name":"Slow fixture",
+      "externalModelId":"slow","modelType":"LLM","protocolKey":model["protocolKey"],"protocolVersion":model["protocolVersion"],
+      "protocolOptions":{},"capabilities":{},"modelOptions":{},"pricing":{"currency":"USD","perRequest":0.01},"enabled":True,"rowVersion":None})
+    c.call("POST",p+"/model-bindings",{"modelId":slow["id"],"active":True})
+    before=len(REQUESTS)
+    pending=c.call("POST",p+"/models/"+slow["id"]+"/debug",{"input":{"text":"stop"},"audioBase64":None,"maxOutputTokens":None},key=key())
+    deadline=time.monotonic()+15
+    while len(REQUESTS)==before and time.monotonic()<deadline: time.sleep(.05)
+    assert len(REQUESTS)>before, "slow call was not dispatched"
+    c.call("POST",p+"/runs/"+pending["id"]+"/cancel",{})
+    wait(c,p,pending,"CANCELLED")
+    assert all(x["inflightCount"]==0 for x in c.call("GET",p+"/budgets"))
+    print("PASS: persisted retry, idempotent retry, cancellation after dispatch, budget slot release")
     policy=c.call("GET",p+"/budgets")[-1]
     limit={k:policy.get(k) for k in ["maxCalls","maxTokens","maxCost","maxConcurrency","maxRunSeconds","maxRunTokens","maxRunCost","rowVersion"]}
     limit["maxCalls"]=0
