@@ -106,6 +106,7 @@ public class CredentialService {
         if(!origin.equals(row.get("ALLOWED_ORIGIN"))||!auth.equals(row.get("SECRET_TYPE")))
             throw new DomainException("CREDENTIAL_SCOPE_MISMATCH",422,"Credential origin or authentication type mismatch");
     }
+    public long revision(ScopeContext s,String id){return id==null?0:((Number)credential(s,id,false).get("SECRET_REVISION")).longValue();}
     public Resolved resolve(ScopeContext s,String id,String auth,String baseUrl){
         if("NONE".equals(auth)){checkBinding(s,id,auth,baseUrl);return new Resolved(null,0);}
         var row=credential(s,id,false);

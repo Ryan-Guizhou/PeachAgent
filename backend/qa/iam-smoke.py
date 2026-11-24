@@ -29,7 +29,7 @@ class Client:
         assert status == expected, (method, path, status, expected, payload[:200])
         return json.loads(payload) if payload else None
 
-def read_code(email):
+def read_code(email, exclude=None):
     for _ in range(30):
         with urllib.request.urlopen("http://127.0.0.1:8025/api/v1/messages", timeout=3) as response:
             messages = json.load(response).get("messages", [])
@@ -38,7 +38,7 @@ def read_code(email):
                 with urllib.request.urlopen("http://127.0.0.1:8025/api/v1/message/" + item["ID"]) as response:
                     msg = json.load(response)
                 match = re.search(r"\b[A-Za-z0-9_-]{43}\b", msg.get("Text", ""))
-                if match:
+                if match and match.group() != exclude:
                     return match.group()
         time.sleep(0.5)
     raise AssertionError("Verification email not received")
@@ -69,6 +69,15 @@ a.call("PATCH", "/workspaces/" + w["id"], {"name": "Changed", "rowVersion": w["r
 a.call("PATCH", "/workspaces/" + w["id"], {"name": "Stale", "rowVersion": w["rowVersion"]}, 409)
 a.call("POST", "/workspaces/" + aw + "/archive", {"rowVersion": 0}, 409)
 a.call("POST", "/workspaces/" + w["id"] + "/projects/" + p["id"] + "/archive", {"rowVersion": p["rowVersion"]})
+old_code = read_code("p1-a@example.invalid")
+a.call("POST", "/auth/email-challenges", {"email":"p1-a@example.invalid","purpose":"RESET"}, 202)
+new_code = read_code("p1-a@example.invalid", old_code)
+a.call("POST", "/auth/password-reset", {"email":"p1-a@example.invalid","token":new_code,"password":"CI-only-reset-passphrase-456"}, 204)
+a.call("GET", "/auth/me", expected=401)
+a.call("POST", "/auth/login", {"email":"p1-a@example.invalid","password":"CI-only-test-passphrase-123","remember":False}, 401)
+new_login=a.call("POST","/auth/login",{"email":"p1-a@example.invalid","password":"CI-only-reset-passphrase-456","remember":False})
+a.csrf=new_login["csrfToken"]
+a.call("GET","/admin/users",expected=403)
 a.call("POST", "/auth/logout", {}, 204)
 a.call("GET", "/auth/me", expected=401)
-print("PASS: SMTP registration, one-time challenge, real cookie session, two tenants, workspace/project isolation, CSRF, optimistic lock, archive and logout")
+print("PASS: SMTP registration, one-time challenge, real cookie session, two tenants, workspace/project isolation, CSRF, optimistic lock, archive, password recovery and logout")

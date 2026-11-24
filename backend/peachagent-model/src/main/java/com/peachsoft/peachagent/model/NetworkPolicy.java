@@ -71,7 +71,9 @@ public class NetworkPolicy {
             if(a==100&&c==100&&d==100&&e==200)return false;
         }else if(b.length==16){
             int first=b[0]&255,second=b[1]&255;
+            if(first==0xfd&&second==0&&(b[2]&255)==0x0e&&(b[3]&255)==0xc2)return false;
             if((first&0xfe)==0xfc&&!internal)return false;
+            if((first&0xe0)!=0x20&&(first&0xfe)!=0xfc&&!ip.isLoopbackAddress())return false;
             // 仅公共 global unicast 或明确允许的本地地址；拒绝映射/转换/特殊地址。
             if(!internal&&(first&0xe0)!=0x20)return false;
             if(first==0x20&&second==0x01&&(b[2]&255)==0x0d&&(b[3]&255)==0xb8)return false;

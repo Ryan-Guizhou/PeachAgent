@@ -12,6 +12,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -22,7 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
 @Service
 public class ModelService {
     private static final String PROVIDER_VIEW="SELECT ID,NAME,VENDOR_KEY,BASE_URL,AUTH_METHOD,CREDENTIAL_ID,PROTOCOL_CONFIG,TIMEOUT_MS,ENABLED,STATUS,CONFIG_REVISION,VERIFY_STATUS,VERIFIED_AT,VERIFY_ERROR_CODE,ROW_VERSION FROM MODEL_PROVIDER";
-    private static final String MODEL_VIEW="SELECT ID,PROVIDER_ID,NAME,EXTERNAL_MODEL_ID,MODEL_TYPE,PROTOCOL_KEY,PROTOCOL_VERSION,PROTOCOL_OPTIONS,CAPABILITIES,MODEL_OPTIONS,PRICING,ENABLED,STATUS,CONFIG_REVISION,VERIFY_STATUS,VERIFIED_AT,VERIFY_ERROR_CODE,ROW_VERSION FROM MODEL_INSTANCE";
+    private static final String MODEL_VIEW="SELECT ID,PROVIDER_ID,NAME,EXTERNAL_MODEL_ID,MODEL_TYPE,PROTOCOL_KEY,PROTOCOL_VERSION,PROTOCOL_OPTIONS,CAPABILITIES,MODEL_OPTIONS,PRICING,ENABLED,STATUS,CONFIG_REVISION,VERIFY_STATUS,VERIFIED_CONFIG_REVISION,VERIFIED_PROVIDER_REVISION,VERIFIED_CREDENTIAL_REVISION,VERIFIED_ADAPTER_KEY,VERIFIED_ADAPTER_VERSION,VERIFIED_AT,VERIFY_ERROR_CODE,ROW_VERSION FROM MODEL_INSTANCE";
     private static final Map<String,String> OPERATIONS=Map.of("LLM","CHAT","EMBEDDING","EMBED","RERANK","RERANK","IMAGE","GENERATE_IMAGE","STT","TRANSCRIBE","TTS","SYNTHESIZE");
     private final JdbcTemplate jdbc;
     private final IdGenerator ids;
@@ -74,7 +75,13 @@ public class ModelService {
         Map<String,Object> config=options(input.protocolConfig());
         // P1 连接级配置仅接受已注册协议标识所对应的 Schema；内置协议没有额外连接参数。
         ModelJson.noSecret(config);
-        if(!config.isEmpty())throw new DomainException("INVALID_CONFIG",422,"Connection extension options not supported by registered protocols");
+        for(var entry:config.entrySet()){
+            var descriptor=registry.list().stream().filter(d->(d.protocol().key()+"/"+d.protocol().version()).equals(entry.getKey())).findFirst()
+                    .orElseThrow(()->new DomainException("INVALID_CONFIG",422,"Unknown connection protocol"));
+            if(!(entry.getValue() instanceof Map<?,?> values)||!(descriptor.connectionSchema().get("properties") instanceof Map<?,?> properties)
+                    ||!properties.keySet().containsAll(values.keySet()))
+                throw new DomainException("INVALID_CONFIG",422,"Invalid connection options");
+        }
         int timeout=input.timeoutMs()==null?60000:input.timeoutMs();
         if(timeout<1000||timeout>180000)throw new DomainException("INVALID_TIMEOUT",422,"Invalid connection timeout");
         String now=time.now();
@@ -129,7 +136,7 @@ public class ModelService {
         String verification="UNVERIFIED";
         try{
             var adapter=registry.resolve(protocol,type,operation);
-            adapter.validate(new ProtocolConfiguration((String)p.get("AUTH_METHOD"),type,Map.of(),combined,cap));
+            adapter.validate(new ProtocolConfiguration((String)p.get("AUTH_METHOD"),type,connectionOptions(p,protocol),combined,cap));
         }catch(DomainException ex){
             if(!"MODEL_PROTOCOL_UNAVAILABLE".equals(ex.code())||input.enabled()||!combined.isEmpty())throw ex;
             verification="UNSUPPORTED";
@@ -231,13 +238,19 @@ public class ModelService {
         var combined=new HashMap<>(ModelJson.object(mapper,m.get("MODEL_OPTIONS")));combined.putAll(ModelJson.object(mapper,m.get("PROTOCOL_OPTIONS")));
         String auth=(String)p.get("AUTH_METHOD"),base=(String)p.get("BASE_URL"),credential=(String)p.get("CREDENTIAL_ID");
         credentials.checkBinding(s,credential,auth,base);
-        adapter.validate(new ProtocolConfiguration(auth,type,Map.of(),combined,ModelJson.object(mapper,m.get("CAPABILITIES"))));
-        if(!diagnostic&&!"VERIFIED".equals(m.get("VERIFY_STATUS")))throw new DomainException("MODEL_NOT_VERIFIED",409,"Verify model through a diagnostic first");
+        adapter.validate(new ProtocolConfiguration(auth,type,connectionOptions(p,protocol),combined,ModelJson.object(mapper,m.get("CAPABILITIES"))));
+        if(!diagnostic&&(!"VERIFIED".equals(m.get("VERIFY_STATUS")) || !Objects.equals(m.get("VERIFIED_ADAPTER_KEY"),adapter.descriptor().adapterKey()) || !Objects.equals(m.get("VERIFIED_ADAPTER_VERSION"),adapter.descriptor().adapterVersion()) || !sameRevision(m,"VERIFIED_CONFIG_REVISION",n(m,"CONFIG_REVISION")) || !sameRevision(m,"VERIFIED_PROVIDER_REVISION",n(p,"CONFIG_REVISION")) || !sameRevision(m,"VERIFIED_CREDENTIAL_REVISION",credentials.revision(s,credential))))throw new DomainException("MODEL_NOT_VERIFIED",409,"Verify model through a diagnostic first");
         return new Snapshot(modelId,(String)p.get("ID"),credential,(String)m.get("EXTERNAL_MODEL_ID"),type,protocol,adapter.descriptor().adapterKey(),
                 adapter.descriptor().adapterVersion(),n(m,"CONFIG_REVISION"),n(p,"CONFIG_REVISION"),base,auth,((Number)p.get("TIMEOUT_MS")).intValue(),
                 Map.copyOf(combined),ModelJson.object(mapper,m.get("PRICING")),identity.active(s.userId()).currency(),operation);
     }
 
+    private static boolean sameRevision(Map<String,Object> row,String key,long revision){return row.get(key) instanceof Number number&&number.longValue()==revision;}
+    @SuppressWarnings("unchecked")
+    private Map<String,Object> connectionOptions(Map<String,Object> provider,ProtocolKey protocol){
+        Object value=ModelJson.object(mapper,provider.get("PROTOCOL_CONFIG")).get(protocol.key()+"/"+protocol.version());
+        return value instanceof Map<?,?> ? (Map<String,Object>)value : Map.of();
+    }
     public Prepared prepare(ScopeContext s,Snapshot pinned){
         var current=snapshot(s,pinned.modelId(),true);
         if(!current.equals(pinned))throw new DomainException("MODEL_CONFIG_CHANGED",409,"Pinned model configuration changed");
