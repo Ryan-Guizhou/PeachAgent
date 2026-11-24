@@ -11,6 +11,8 @@ import java.time.ZoneOffset;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,6 +51,70 @@ public class BudgetService {
 
     public List<Map<String,Object>> list(ScopeContext s){
         return policies(s,false).stream().map(x->JsonData.view(mapper,x)).toList();
+    }
+
+    /**
+     * 读取当前 UTC 周期三级预算快照，未发生调用的周期以零占用展示。
+     * 未知调用仍保留预占，Token/金额剩余额度不可证明时返回空值。
+     */
+    @Transactional(readOnly = true)
+    public List<Map<String,Object>> overview(ScopeContext s) {
+        String now = time.now();
+        List<Map<String,Object>> result = new ArrayList<>();
+        for (Map<String,Object> policy : policies(s, false)) {
+            Period window = period(now, (String) policy.get("PERIOD_TYPE"));
+            var buckets = jdbc.queryForList("""
+                    SELECT CONSUMED_CALLS,CONSUMED_TOKENS,CONSUMED_COST,RESERVED_CALLS,
+                        RESERVED_TOKENS,RESERVED_COST,UNKNOWN_CALLS
+                    FROM BUDGET_BUCKET WHERE TENANT_ID = ? AND POLICY_ID = ? AND PERIOD_START = ?
+                    """, s.tenantId(), policy.get("ID"), window.start());
+            Map<String,Object> item = new LinkedHashMap<>(policy);
+            item.put("PERIOD_START", window.start());
+            item.put("PERIOD_END", window.end());
+            for (String key : List.of("CONSUMED_CALLS","CONSUMED_TOKENS","CONSUMED_COST",
+                    "RESERVED_CALLS","RESERVED_TOKENS","RESERVED_COST","UNKNOWN_CALLS")) {
+                item.put(key, buckets.isEmpty() ? BigDecimal.ZERO : buckets.getFirst().get(key));
+            }
+            boolean uncertain = amount(item, "UNKNOWN_CALLS").signum() > 0;
+            item.put("REMAINING_CALLS", remaining(item,"MAX_CALLS","CONSUMED_CALLS","RESERVED_CALLS",false));
+            item.put("REMAINING_TOKENS", remaining(item,"MAX_TOKENS","CONSUMED_TOKENS","RESERVED_TOKENS",uncertain));
+            item.put("REMAINING_COST", remaining(item,"MAX_COST","CONSUMED_COST","RESERVED_COST",uncertain));
+            result.add(JsonData.view(mapper, item));
+        }
+        return result;
+    }
+
+    private static BigDecimal remaining(Map<String,Object> row, String limit, String consumed,
+                                        String reserved, boolean uncertain) {
+        if (row.get(limit) == null || uncertain) {
+            return null;
+        }
+        return amount(row, limit).subtract(amount(row, consumed)).subtract(amount(row, reserved)).max(BigDecimal.ZERO);
+    }
+
+    /**
+     * 按用量/费用来源分组统计实际派发调用，独立于明细分页上限。
+     * SUM 对全未知字段保留 NULL，避免将未知消费伪装为零。
+     */
+    public List<Map<String,Object>> summary(ScopeContext s, String from, String to) {
+        TimeCodec.parse(from);
+        TimeCodec.parse(to);
+        if (from.compareTo(to) >= 0) {
+            throw new DomainException("INVALID_RANGE",422,"Invalid usage range");
+        }
+        return jdbc.queryForList("""
+                SELECT MODEL_TYPE,USAGE_SOURCE,COST_SOURCE,COST_CURRENCY,COUNT(*) AS CALL_COUNT,
+                    COUNT(TOTAL_TOKENS) AS KNOWN_TOKEN_CALLS,
+                    COUNT(*) - COUNT(TOTAL_TOKENS) AS UNKNOWN_TOKEN_CALLS,
+                    SUM(INPUT_TOKENS) AS INPUT_TOKENS,SUM(OUTPUT_TOKENS) AS OUTPUT_TOKENS,
+                    SUM(TOTAL_TOKENS) AS TOTAL_TOKENS,COUNT(COST_AMOUNT) AS KNOWN_COST_CALLS,
+                    COUNT(*) - COUNT(COST_AMOUNT) AS UNKNOWN_COST_CALLS,SUM(COST_AMOUNT) AS COST_AMOUNT
+                FROM RT_MODEL_CALL WHERE TENANT_ID = ? AND WORKSPACE_ID = ? AND PROJECT_ID = ?
+                    AND CREATED_AT >= ? AND CREATED_AT < ? AND DISPATCH_INTENT_AT IS NOT NULL
+                GROUP BY MODEL_TYPE,USAGE_SOURCE,COST_SOURCE,COST_CURRENCY
+                ORDER BY MODEL_TYPE,USAGE_SOURCE,COST_SOURCE,COST_CURRENCY
+                """,s.tenantId(),s.workspaceId(),s.requireProject(),from,to)
+                .stream().map(row -> JsonData.view(mapper,row)).toList();
     }
 
     @Transactional
