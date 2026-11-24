@@ -185,6 +185,28 @@ try {
   await page.keyboard.press('Escape')
   await page.getByRole('dialog').waitFor({state:'hidden'})
   assert.equal(await page.getByText('Unsaved matrix fixture',{exact:true}).count(),0)
+  // Navigate using the application router; duplicate navigation must not clear the active page.
+  async function navigate(route){
+    if(new URL(page.url()).hash!=='#/'+route){
+      if(await page.locator('.mobile-menu').isVisible())await page.locator('.mobile-menu').click()
+      await page.locator('#studio-navigation nav a[href="#/'+route+'"]').click()
+    }
+    await page.waitForFunction(route=>location.hash==='#/'+route&&
+      document.querySelector('.heading .eyebrow')?.textContent?.includes(route.toUpperCase())&&
+      document.querySelector('main')?.getAttribute('aria-busy')==='false',route)
+  }
+  await page.locator('main .panel-head button.primary').first().click()
+  await page.locator('.dialog input').first().fill('Unsaved navigation fixture')
+  page.once('dialog',dialog=>dialog.dismiss())
+  await page.locator('#studio-navigation nav a[href="#/settings"]').evaluate(el=>el.click())
+  assert.equal(new URL(page.url()).hash,'#/projects')
+  assert.ok(await page.getByRole('dialog').isVisible())
+  page.once('dialog',dialog=>dialog.accept())
+  await page.locator('#studio-navigation nav a[href="#/settings"]').evaluate(el=>el.click())
+  await page.getByRole('dialog').waitFor({state:'hidden'})
+  await navigate('settings')
+  await page.locator('#studio-navigation nav a[href="#/settings"]').click()
+  await navigate('settings')
   const headings={
     'zh-CN':['工作台','空间与项目','模型中心','凭证中心','提示词','模型对话','运行记录','用量与预算','插件声明','设置'],
     'en-US':['Overview','Projects','Models','Credentials','Prompts','Chat','Runs','Usage & budgets','Plugin manifests','Settings']
@@ -193,15 +215,16 @@ try {
   for (const theme of ['editorial-light','obsidian-dark','nordic-slate']) {
     for (const locale of ['zh-CN','en-US']) {
       await page.setViewportSize({width:1440,height:900})
-      await page.goto(base+'/#/settings')
-      await page.locator('main[aria-busy="false"] select').first().selectOption(theme)
+      await navigate('settings')
+      await page.locator('main').getByRole('combobox',{name:/主题|Theme/}).selectOption(theme)
       await page.waitForFunction(v=>document.documentElement.dataset.theme===v,theme)
-      await page.locator('main select').nth(1).selectOption(locale)
+      await page.locator('main').getByRole('combobox',{name:/语言|Language/}).selectOption(locale)
       await page.waitForFunction(v=>document.documentElement.lang===v,locale)
       for(const width of [1440,1024,768,390]){
         await page.setViewportSize({width,height:900})
+        console.log('CHECK matrix '+theme+'/'+locale+'/'+width)
         for (const [index,route] of pages.entries()){
-          await page.goto(base+'/#/'+route)
+          await navigate(route)
           await page.waitForFunction(({route,heading})=>
             document.querySelector('.heading .eyebrow')?.textContent?.includes(route.toUpperCase())&&
             document.querySelector('main h1')?.textContent?.trim()===heading&&
@@ -213,7 +236,7 @@ try {
           const sizes=await page.evaluate(()=>({actual:document.documentElement.scrollWidth,viewport:window.innerWidth}))
           assert.ok(sizes.actual<=sizes.viewport+2,'Page overflow '+JSON.stringify({theme,locale,width,route,...sizes}))
           assert.equal(await page.locator('.scope select').count(),2)
-          if(width===1440||width===390)await page.screenshot({path:join(evidence,route+'-'+theme+'-'+locale+'-'+width+'.png')})
+          if((width===1440||width===390)&&['home','models','chat','usage','settings'].includes(route))await page.screenshot({path:join(evidence,route+'-'+theme+'-'+locale+'-'+width+'.png')})
           verified++
         }
       }

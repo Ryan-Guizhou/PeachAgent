@@ -54,3 +54,7 @@
 .table-wrap{max-width:100%}
 .chat-body button[aria-pressed="true"]{border-color:var(--accent-primary);background:var(--accent-soft)}
 @media(max-width:760px){.scope{min-width:100%}.heading>button{flex-shrink:0}.panel{max-width:100%}.table-wrap{overscroll-behavior-x:contain}}
+
+/* 中等视口允许顶部作用域换行，长名称只在自己的控件内截断。 */
+.breadcrumb{min-width:0;overflow:hidden;text-overflow:ellipsis}.scope{min-width:0}.scope select{min-width:0;overflow:hidden;text-overflow:ellipsis}
+@media(min-width:761px) and (max-width:1000px){.topbar{gap:10px;flex-wrap:wrap}.scope{order:3;flex-basis:100%;max-width:100%}.scope select{max-width:none}}
