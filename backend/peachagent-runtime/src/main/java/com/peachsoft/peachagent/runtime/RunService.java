@@ -57,9 +57,11 @@ public class RunService {
     private static String str(Map<String,Object> m,String k){return (String)m.get(k);}
     private static DomainException conflict(String code,String msg){return new DomainException(code,409,msg);}
     private String json(Object x){return mapper.writeValueAsString(x);}
-    private void tenantLock(ScopeContext s){
+    private IdentityService.Principal tenantLock(ScopeContext s){
         jdbc.queryForObject("SELECT ID FROM IAM_TENANT WHERE ID = ? FOR UPDATE",String.class,s.tenantId());
-        identity.assertCurrentScope(s);
+        var principal=identity.active(s.userId());
+        identity.assertCurrentScope(principal,s);
+        return principal;
     }
 
     /** 所有产生子表记录的 Runtime 事务先获取租户父行共享锁，再锁 Run/Call/预算；受理及归档仍用排他锁。 */
@@ -200,10 +202,10 @@ public class RunService {
         if(size(input.text())>65536)throw new DomainException("INVALID_FIELD",422,"Input exceeds 64 KiB");
         byte[] hash=SecurityTokens.digest("CHAT:"+conversation+":"+json(input));
         return createTransaction(status->{
-            tenantLock(s);var old=existing(s,key,hash);if(old!=null)return old;queueLimit(s);
+            var principal=tenantLock(s);var old=existing(s,key,hash);if(old!=null)return old;queueLimit(s);
             var c=chat.require(s,conversation,true);
             if(!"ACTIVE".equals(c.get("STATUS"))||c.get("ACTIVE_RUN_ID")!=null)throw conflict("CONVERSATION_BUSY","Conversation unavailable or active");
-            var model=models.snapshot(s,input.modelId(),false);
+            var model=models.snapshot(s,input.modelId(),false,principal);
             if(!"CHAT".equals(model.operation()))throw new DomainException("MODEL_TYPE_INVALID",422,"Chat model required");
             String system=prompts.renderVersion(s,input.promptVersionId(),input.variables());
             int max=output(model,input.maxOutputTokens());
@@ -211,10 +213,10 @@ public class RunService {
             String now=time.now(),uid=ids.nextId(),aid=ids.nextId(),id=ids.nextId();long seq=n(c,"NEXT_MESSAGE_SEQ");
             message(s,conversation,uid,seq,"USER",input.text(),"COMPLETE",null,now);
             message(s,conversation,aid,seq+1,"ASSISTANT","","PENDING",uid,now);
-            insert(s,id,"CHAT",conversation,uid,aid,null,key,hash,payload,now);
+            var created=insert(s,id,"CHAT",conversation,uid,aid,null,key,hash,payload,now);
             jdbc.update("UPDATE CHAT_CONVERSATION SET ACTIVE_RUN_ID = ?,NEXT_MESSAGE_SEQ = NEXT_MESSAGE_SEQ + 2,SELECTED_MODEL_ID = ?,SELECTED_PROMPT_VERSION_ID = ?,LAST_MESSAGE_AT = ?,UPDATED_AT = ?,ROW_VERSION = ROW_VERSION + 1 WHERE ID = ?",
                     id,model.modelId(),input.promptVersionId(),now,now,conversation);
-            return view(row(id,false));
+            return created;
         });
     }
     public Map<String,Object> debug(ScopeContext s,String modelId,DebugInput input,String key){
@@ -222,20 +224,20 @@ public class RunService {
         if(json(values).length()>65536)throw new DomainException("INVALID_FIELD",422,"Debug input too large");
         byte[] hash=SecurityTokens.digest("DEBUG:"+modelId+":"+json(input));
         return createTransaction(status->{
-            tenantLock(s);var old=existing(s,key,hash);if(old!=null)return old;queueLimit(s);
-            var model=models.snapshot(s,modelId,true);int max=output(model,input.maxOutputTokens());String now=time.now(),id=ids.nextId();
+            var principal=tenantLock(s);var old=existing(s,key,hash);if(old!=null)return old;queueLimit(s);
+            var model=models.snapshot(s,modelId,true,principal);int max=output(model,input.maxOutputTokens());String now=time.now(),id=ids.nextId();
             List<ModelExecutionRequest.Message> messages="CHAT".equals(model.operation())?List.of(new ModelExecutionRequest.Message("user",JsonData.requiredText((String)values.get("text"),65536))):List.of();
             String artifactId="TRANSCRIBE".equals(model.operation())?ids.nextId():null;
             var payload=new Payload(model,messages,values,artifactId,null,Map.of(),max);
-            insert(s,id,"MODEL_DEBUG",null,null,null,null,key,hash,payload,now);
+            var created=insert(s,id,"MODEL_DEBUG",null,null,null,null,key,hash,payload,now);
             if(artifactId!=null)artifacts.input(s,id,artifactId,input.audioBase64());
-            return view(row(id,false));
+            return created;
         });
     }
     public Map<String,Object> retry(ScopeContext s,String id,String key,boolean acknowledgeUnknown){
         byte[] hash=SecurityTokens.digest("RETRY:"+id+":"+acknowledgeUnknown);
         return createTransaction(status->{
-            tenantLock(s);var old=existing(s,key,hash);if(old!=null)return old;queueLimit(s);
+            var principal=tenantLock(s);var old=existing(s,key,hash);if(old!=null)return old;queueLimit(s);
             var prior=scoped(s,id,false);
             if(!"CHAT".equals(prior.get("RUN_TYPE"))||!TERMINAL.contains(prior.get("STATUS"))||prior.get("REQUEST_SNAPSHOT")==null)
                 throw conflict("RETRY_NOT_ALLOWED","Only retained terminal chat runs can be retried");
@@ -247,12 +249,12 @@ public class RunService {
             Integer unknown=jdbc.queryForObject("SELECT COUNT(*) FROM RT_MODEL_CALL WHERE RUN_ID = ? AND STATUS = 'UNKNOWN'",Integer.class,id);
             if(unknown>0&&!acknowledgeUnknown)throw conflict("RETRY_ACK_REQUIRED","Previous charge may be unknown");
             Payload payload=mapper.readValue(prior.get("REQUEST_SNAPSHOT").toString(),Payload.class);
-            models.snapshot(s,payload.model().modelId(),false);
+            models.snapshot(s,payload.model().modelId(),false,principal);
             String now=time.now(),rid=ids.nextId(),aid=ids.nextId();
             message(s,conversation,aid,n(c,"NEXT_MESSAGE_SEQ"),"ASSISTANT","","PENDING",uid,now);
-            insert(s,rid,"CHAT",conversation,uid,aid,id,key,hash,payload,now);
+            var created=insert(s,rid,"CHAT",conversation,uid,aid,id,key,hash,payload,now);
             jdbc.update("UPDATE CHAT_CONVERSATION SET ACTIVE_RUN_ID = ?,NEXT_MESSAGE_SEQ = NEXT_MESSAGE_SEQ + 1,UPDATED_AT = ?,ROW_VERSION = ROW_VERSION + 1 WHERE ID = ?",rid,now,conversation);
-            return view(row(rid,false));
+            return created;
         });
     }
     private void message(ScopeContext s,String conversation,String id,long seq,String role,String content,String status,String reply,String now){
@@ -261,15 +263,28 @@ public class RunService {
                 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,id,s.tenantId(),s.workspaceId(),s.requireProject(),conversation,seq,role,content,status,reply,now,now,s.userId(),s.userId());
     }
-    private void insert(ScopeContext s,String id,String type,String conversation,String uid,String aid,String retry,String key,byte[] hash,Payload p,String now){
+    /** 初始状态与序号 1 同事务写入，提交成功后才返回由本次写入值构成的公开投影。 */
+    private Map<String,Object> insert(ScopeContext s,String id,String type,String conversation,String uid,String aid,String retry,String key,byte[] hash,Payload p,String now){
         int seconds=Math.min(180,budgets.deadlineSeconds(s));
+        String trace=ids.nextId().replace("-",""),deadline=TimeCodec.plusSeconds(now,seconds);
         jdbc.update("""
                 INSERT INTO RT_RUN (ID,TENANT_ID,WORKSPACE_ID,PROJECT_ID,ACTOR_USER_ID,RUN_TYPE,TRACE_ID,CONVERSATION_ID,USER_MESSAGE_ID,ASSISTANT_MESSAGE_ID,
-                    RETRY_OF_RUN_ID,IDEMPOTENCY_KEY,REQUEST_HASH,STATUS,REQUEST_SNAPSHOT,LIMIT_SNAPSHOT,QUEUED_AT,DEADLINE_AT,CREATED_AT,UPDATED_AT,CREATED_BY,UPDATED_BY)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'QUEUED',?,?,?,?,?,?,?,?)
-                """,id,s.tenantId(),s.workspaceId(),s.requireProject(),s.userId(),type,ids.nextId().replace("-",""),conversation,uid,aid,retry,key,hash,
-                json(p),json(Map.of("maxRunSeconds",seconds,"maxOutputTokens",p.maxOutputTokens())),now,TimeCodec.plusSeconds(now,seconds),now,now,s.userId(),s.userId());
-        event(row(id,true),"status",Map.of("status","QUEUED"),now);
+                    RETRY_OF_RUN_ID,IDEMPOTENCY_KEY,REQUEST_HASH,STATUS,REQUEST_SNAPSHOT,LIMIT_SNAPSHOT,NEXT_EVENT_SEQ,
+                    QUEUED_AT,DEADLINE_AT,CREATED_AT,UPDATED_AT,CREATED_BY,UPDATED_BY)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'QUEUED',?,?,2,?,?,?,?,?,?)
+                """,id,s.tenantId(),s.workspaceId(),s.requireProject(),s.userId(),type,trace,conversation,uid,aid,retry,key,hash,
+                json(p),json(Map.of("maxRunSeconds",seconds,"maxOutputTokens",p.maxOutputTokens())),now,deadline,now,now,s.userId(),s.userId());
+        jdbc.update("""
+                INSERT INTO RT_RUN_EVENT (ID,TENANT_ID,WORKSPACE_ID,PROJECT_ID,RUN_ID,SEQ,EVENT_TYPE,PAYLOAD,CREATED_AT)
+                VALUES (?,?,?,?,?,1,'status',?,?)
+                """,ids.nextId(),s.tenantId(),s.workspaceId(),s.requireProject(),id,json(Map.of("status","QUEUED")),now);
+        Map<String,Object> created=new LinkedHashMap<>();
+        created.put("ID",id);created.put("RUN_TYPE",type);created.put("TRACE_ID",trace);
+        created.put("CONVERSATION_ID",conversation);created.put("USER_MESSAGE_ID",uid);
+        created.put("ASSISTANT_MESSAGE_ID",aid);created.put("RETRY_OF_RUN_ID",retry);
+        created.put("STATUS","QUEUED");created.put("QUEUED_AT",now);
+        created.put("DEADLINE_AT",deadline);created.put("CREATED_AT",now);created.put("UPDATED_AT",now);
+        return view(created);
     }
     private void event(Map<String,Object> r,String type,Object payload,String now){
         jdbc.update("""

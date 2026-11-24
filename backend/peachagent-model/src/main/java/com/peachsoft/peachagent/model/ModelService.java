@@ -227,7 +227,11 @@ public class ModelService {
     }
 
     public Snapshot snapshot(ScopeContext s,String modelId,boolean diagnostic){
-        var principal=identity.active(s.userId());
+        return snapshot(s,modelId,diagnostic,identity.active(s.userId()));
+    }
+
+    /** 受理事务已重新读取当前账号时复用本次身份，仍独立校验作用域、配置和绑定。 */
+    public Snapshot snapshot(ScopeContext s,String modelId,boolean diagnostic,IdentityService.Principal principal){
         identity.assertCurrentScope(principal,s);
         // 单个语句读取实例、连接及绑定事实，避免多个数据库往返与不同语句快照。
         var m=one("""

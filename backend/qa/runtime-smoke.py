@@ -198,6 +198,11 @@ try:
     early_model=models["openai.chat-completions"]
     early=c.call("POST",p+"/models/"+early_model["id"]+"/debug",
                  {"input":{"text":"early-stream-proof"},"audioBase64":None,"maxOutputTokens":32},key=key())
+    assert early["status"]=="QUEUED" and early["startedAt"] is None and early["finishedAt"] is None
+    assert early["queuedAt"]==early["createdAt"]==early["updatedAt"]
+    admitted=c.call("GET",p+"/runs/"+early["id"])
+    for field in ("id","traceId","runType","conversationId","userMessageId","assistantMessageId","retryOfRunId","queuedAt","deadlineAt","createdAt"):
+        assert admitted[field]==early[field],field
     early_request=urllib.request.Request(BASE+"/api/v1"+p+"/runs/"+early["id"]+"/events",
                      headers={"Origin":ORIGIN,"Accept":"text/event-stream"})
     seen=False
@@ -234,7 +239,10 @@ try:
         observer.join(timeout=6)
     assert seen
     wait(c,p,early)
-    print("PASS: downstream first delta received before upstream final bytes are released")
+    initial=replay_events(c,p,early)
+    assert initial[0]["seq"]==1 and initial[0]["eventType"]=="status" and initial[0]["payload"]["status"]=="QUEUED"
+    assert [event["seq"] for event in initial]==list(range(1,len(initial)+1))
+    print("PASS: committed admission projection, initial event sequence and downstream first delta before upstream final bytes")
     prompt=c.call("POST",p+"/prompts",{"name":"Fixture prompt","description":"","content":"Say hello to {{name}}",
          "variables":{"name":{"type":"string","required":True}},"rowVersion":None})
     version=c.call("POST",p+"/prompts/"+prompt["id"]+"/versions",{"changeNote":"Initial","rowVersion":prompt["rowVersion"]})

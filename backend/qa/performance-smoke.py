@@ -326,12 +326,15 @@ def submit(scope, client):
     start = time.monotonic()
     run = client.call("POST", path, payload, key=marker)
     created = (time.monotonic() - start) * 1000
+    assert run["status"] == "QUEUED" and run["queuedAt"] == run["createdAt"]
     first, reconnects = client.events(scope["path"], run["id"])
     # Verify the idempotency key after streaming so the extra HTTP request is not included in TTFT.
     duplicate = client.call("POST", path, payload, key=marker)
     assert duplicate["id"] == run["id"], "Duplicate run"
     detail = client.call("GET", scope["path"] + "/runs/" + run["id"])
     assert detail["status"] == "SUCCEEDED", detail
+    for field in ("id", "traceId", "runType", "queuedAt", "deadlineAt", "createdAt"):
+        assert detail[field] == run[field], (field, run["id"])
     with LOCK:
         observed = REQUESTS[marker]
         assert observed["count"] == 1, "Provider replay"
