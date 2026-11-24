@@ -5,7 +5,7 @@
 ## 准备
 
 1. 使用独立测试账号、测试工作空间和项目；启动真实 MySQL、Redis、API 和 Worker，确保本地端口与 API 允许的 origin 一致。
-2. 通过工作台配置六类真实模型，绑定项目，确认供应商价格和预算，避免生产数据及费用。LLM 的其他供应商/协议可额外增加模型条目（最多 12 条）。
+2. 通过工作台配置六类真实模型，绑定项目，确认供应商价格和预算，避免生产数据及费用。LLM 必须覆盖 OpenAI-compatible、Anthropic Messages 和 DashScope/OpenAI-compatible（供应商标识使用 `dashscope`），因此至少配置 8 个独立模型实例，最多 12 个。真实外部验收使用 HTTPS 供应商地址；本地 fixture 不纳入本入口。
 3. 复制 `vendor-smoke.example.json` 到仓库外的路径，替换 workspaceId、projectId、modelId、vendorKey 和 protocolKey 为实际值。示例 UUID 只是占位，不是可用模型。准备一份含短句的非隐私 WAV 音频（最多 10 MiB）。
 4. 登录凭证只通过运行进程环境注入 `PEACHAGENT_SMOKE_EMAIL`、`PEACHAGENT_SMOKE_PASSWORD`。不要将密码、真实 Key、配置文件或原始响应提交 Git。
 
@@ -15,7 +15,7 @@
 python3 backend/qa/vendor-smoke.py --config backend/qa/vendor-smoke.example.json
 ```
 
-此操作不会联网，也不会产生费用。常规 CI 只执行这一步。
+此操作不会联网，也不会产生费用。常规 CI 校验完整路由计划及离线反例，不执行真实供应商请求。
 
 ## 显式执行真实模型验收
 

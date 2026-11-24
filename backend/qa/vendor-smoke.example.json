@@ -9,6 +9,18 @@
       "protocolKey": "openai.chat-completions"
     },
     {
+      "modelId": "00000000-0000-4000-8000-000000000016",
+      "modelType": "LLM",
+      "vendorKey": "anthropic",
+      "protocolKey": "anthropic.messages"
+    },
+    {
+      "modelId": "00000000-0000-4000-8000-000000000017",
+      "modelType": "LLM",
+      "vendorKey": "dashscope",
+      "protocolKey": "openai.chat-completions"
+    },
+    {
       "modelId": "00000000-0000-4000-8000-000000000011",
       "modelType": "EMBEDDING",
       "vendorKey": "openai",

@@ -7,6 +7,7 @@ import argparse
 import base64
 import datetime
 import http.cookiejar
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -50,6 +51,35 @@ def uuid_string(value):
         return False
 
 
+def llm_route(case):
+    """区分三条已批准的真实 LLM 路由，兼容厂商名称不与协议实现耦合。"""
+    if case["modelType"] != "LLM":
+        return None
+    protocol, vendor = case["protocolKey"], case["vendorKey"].lower()
+    if protocol == "anthropic.messages":
+        return "ANTHROPIC_MESSAGES"
+    if protocol == "openai.chat-completions":
+        return "DASHSCOPE_COMPATIBLE" if vendor == "dashscope" else "OPENAI_COMPATIBLE"
+    return None
+
+
+def external_provider(base_url):
+    """验收入口拒绝本地 fixture 与显然非外部的地址；实际 DNS 仍由受控传输层验证。"""
+    try:
+        uri = urllib.parse.urlsplit(base_url)
+        host = uri.hostname
+        if uri.scheme != "https" or not host or uri.username or uri.password or uri.query or uri.fragment:
+            return False
+        if host.lower().rstrip(".") == "localhost" or host.lower().rstrip(".").endswith((".localhost", ".local", ".invalid")):
+            return False
+        try:
+            return ipaddress.ip_address(host).is_global
+        except ValueError:
+            return "." in host
+    except (ValueError, TypeError, AttributeError):
+        return False
+
+
 def read_plan(path):
     try:
         plan = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -58,9 +88,10 @@ def read_plan(path):
     check(isinstance(plan, dict) and set(plan) == {"workspaceId", "projectId", "models"}, "INVALID_PLAN")
     check(uuid_string(plan["workspaceId"]) and uuid_string(plan["projectId"]), "INVALID_SCOPE_ID")
     cases = plan["models"]
-    check(isinstance(cases, list) and 6 <= len(cases) <= 12, "INVALID_CASE_COUNT")
+    check(isinstance(cases, list) and 8 <= len(cases) <= 12, "INVALID_CASE_COUNT")
     model_ids = set()
     types = set()
+    routes = set()
     for case in cases:
         check(isinstance(case, dict) and set(case) == {"modelId", "modelType", "vendorKey", "protocolKey"},
               "INVALID_CASE")
@@ -71,7 +102,12 @@ def read_plan(path):
         check(case["modelId"].lower() not in model_ids, "DUPLICATE_MODEL")
         model_ids.add(case["modelId"].lower())
         types.add(case["modelType"])
+        route = llm_route(case)
+        if route:
+            routes.add(route)
     check(types == MODEL_TYPES, "MISSING_MODEL_TYPE")
+    check(routes == {"OPENAI_COMPATIBLE", "ANTHROPIC_MESSAGES", "DASHSCOPE_COMPATIBLE"},
+          "MISSING_LLM_ROUTE")
     return plan
 
 
@@ -164,6 +200,9 @@ def preflight(client, plan):
         provider = providers.get(model.get("providerId"))
         check(provider and provider.get("status") == "ACTIVE" and provider.get("enabled")
               and provider.get("vendorKey") == case["vendorKey"], "PROVIDER_MISMATCH")
+        check(external_provider(provider.get("baseUrl")) and
+              case["vendorKey"].lower() not in {"fixture", "mock", "qa", "test"},
+              "EXTERNAL_PROVIDER_REQUIRED")
         binding = bindings.get(case["modelId"])
         check(binding and binding.get("status") == "ACTIVE" and binding.get("enabled"), "MODEL_NOT_BOUND")
     return p
@@ -194,7 +233,7 @@ def result_payload(event_data):
             continue
         event = json.loads(line[6:])
         seq = event.get("seq")
-        check(isinstance(seq, int) and seq > last_seq, "SSE_SEQUENCE_INVALID")
+        check(isinstance(seq, int) and seq == last_seq + 1 and not terminal, "SSE_SEQUENCE_INVALID")
         last_seq = seq
         if event.get("eventType") == "result":
             payloads.append(event.get("payload"))
@@ -249,7 +288,9 @@ def execute_case(client, scope, case, audio):
         usage = client.call("GET", scope + "/usage?from=" + from_time + "&to=" + to_time + "&limit=100")
         calls = [x for x in usage if x.get("runId") == run_id]
         check(len(calls) == 1 and calls[0].get("status") == "SUCCEEDED"
-              and calls[0].get("modelId") == case["modelId"], "CALL_LEDGER_MISMATCH")
+              and calls[0].get("modelId") == case["modelId"]
+              and calls[0].get("modelType") == case["modelType"]
+              and calls[0].get("protocolKey") == case["protocolKey"], "CALL_LEDGER_MISMATCH")
         evidence["usageSource"] = safe_code(calls[0].get("usageSource"), "UNKNOWN")
         evidence["costSource"] = safe_code(calls[0].get("costSource"), "UNKNOWN")
         evidence["status"] = "PASSED"
@@ -274,7 +315,7 @@ def main():
         plan = read_plan(args.config)
         local_base(args.base)
         if not args.execute:
-            print("PLAN_OK: six model types; no network requests or paid calls")
+            print("PLAN_OK: six model types and three LLM routes; no network requests or paid calls")
             return 0
         audio = read_audio(args.wav)
         client = Client(args.base)
