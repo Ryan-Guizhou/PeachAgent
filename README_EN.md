@@ -18,8 +18,9 @@ PeachAgent connects Agent and workflow design, controlled execution, knowledge r
 <!-- doc-section:quick-start -->
 ## Start the P1 development environment
 
-- [Backend setup](backend/README.md): JDK 21, Maven, Docker Compose development dependencies, API and Worker.
-- [Vue console setup](frontend/README.md): Node.js, dependency installation and proxy settings.
+- [Backend setup](backend/README_EN.md): complete configuration, PowerShell/Bash/IDE, API/Worker, middleware, first account/model and troubleshooting.
+- [Environment template](.env.example): copy to .env and fill your own random passwords and KEK; never commit secrets.
+- [Vue console setup](frontend/README_EN.md): Node.js, dependency installation and proxy settings.
 - [Approved P1 technical design](technical/P1-TECHNICAL-DESIGN.md) · [Initial MySQL migration](backend/peachagent-bootstrap/src/main/resources/db/migration/V1__INITIAL_SCHEMA.sql).
 
 ## Try the prototype
@@ -89,6 +90,8 @@ Keep the review and approval record in one cycle Issue, and track each developme
 | [requirements/PRD-PeachAgent.md](requirements/PRD-PeachAgent.md) | The single requirements document: background, objectives, users, complete scope, seven-cycle schedule, and acceptance |
 | [technical/README.md](technical/README.md) | Established architecture constraints, technology direction, and decisions for each cycle's review |
 | [ci/README.md](ci/README.md) | Pre-development technical review, user approval, Issues/PRs, cycle acceptance, and change rules |
+| [backend/](backend/README_EN.md) | P1 backend, seven modules, startup and configuration |
+| [frontend/](frontend/README_EN.md) | P1 console, build and browser testing |
 | [prototype/](prototype/README.md) | The runnable local prototype, HTML/CSS/JS source, implementation contracts, and verification records |
 
 Duplicate overviews, phase specifications, and topic documents have been consolidated. The PRD preserves coverage of previous requirement identifiers; historical text remains available in Git history. Future cycles do not need separate sets of planning and design files in advance: their review Issue holds that record.

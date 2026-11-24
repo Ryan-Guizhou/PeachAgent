@@ -18,7 +18,8 @@ PeachAgent 面向个人开发者，连接 Agent/工作流设计、受控执行�
 <!-- doc-section:quick-start -->
 ## 启动 P1 开发环境
 
-- [服务端启动与配置](backend/README.md)：JDK 21、Maven、Docker Compose 开发依赖及 API/Worker。
+- [服务端启动与配置](backend/README.md)：完整配置项、Windows PowerShell / Bash / IDEA、API/Worker、中间件、首次注册与模型接入、故障排查。
+- [环境变量模板](.env.example)：复制为 .env 并填写自己的随机密码与 KEK，切勿提交秘密。
 - [正式 Vue 控制台](frontend/README.md)：Node.js、依赖安装与代理配置。
 - [已批准 P1 技术方案](technical/P1-TECHNICAL-DESIGN.md) · [MySQL 初始迁移](backend/peachagent-bootstrap/src/main/resources/db/migration/V1__INITIAL_SCHEMA.sql)。
 
@@ -89,6 +90,8 @@ python3 -m http.server 8080 --directory prototype
 | [requirements/PRD-PeachAgent.md](requirements/PRD-PeachAgent.md) | 唯一需求正文：背景、目标、用户、完整需求、七期排期与验收 |
 | [technical/README.md](technical/README.md) | 既定架构约束、技术方向及各期需评审的选择 |
 | [ci/README.md](ci/README.md) | 期前技术评审、用户批准、Issue/PR、周期验收与变更规则 |
+| [backend/](backend/README.md) | 正式 P1 服务端、七模块、启动和配置 |
+| [frontend/](frontend/README.md) | 正式 P1 控制台、构建与浏览器测试 |
 | [prototype/](prototype/README.md) | 可运行的本地原型、HTML/CSS/JS 源码、实现契约和验证记录 |
 
 已有重复总纲、阶段明细和专题已合并；旧编号在 PRD 中保留覆盖关系，历史文本可从 Git 历史查阅。后续不为每一期预建一套计划和方案文件，按该期评审 Issue 记录即可。

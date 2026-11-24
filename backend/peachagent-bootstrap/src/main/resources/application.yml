@@ -71,3 +71,6 @@ peachagent:
   public-origin: ${PUBLIC_ORIGIN:http://localhost:8080}
   mail-from: ${MAIL_FROM:no-reply@peachagent.local}
   credential-kek: ${CREDENTIAL_KEK:}
+  credential-kek-version: ${CREDENTIAL_KEK_VERSION:1}
+  allowed-internal-origins: ${PEACHAGENT_ALLOWED_INTERNAL_ORIGINS:}
+  artifact-directory: ${PEACHAGENT_ARTIFACT_DIRECTORY:./data/artifacts}

@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict'
 import { mkdir } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { chromium } from 'playwright'
 
 // Run after iam-smoke.py and runtime-smoke.py against the real API and fixture data.
 const base = 'http://localhost:8080'
 const pages = ['home','projects','models','credentials','prompts','chat','runs','usage','plugins','settings']
-await mkdir('frontend/qa/evidence', { recursive: true })
+const evidence = fileURLToPath(new URL('./evidence/', import.meta.url))
+await mkdir(evidence, { recursive: true })
 const browser = await chromium.launch({headless:true})
 const page = await browser.newPage({viewport:{width:1440,height:900}})
 const errors = []
@@ -19,7 +22,7 @@ try {
   await page.locator('.scope select').first().locator('option').first().waitFor({state:'attached'})
   await page.goto(base+'/#/runs')
   await page.waitForFunction(() => document.querySelector('main')?.textContent?.includes('SUCCEEDED'))
-  await page.screenshot({path:'frontend/qa/evidence/real-runs.png'})
+  await page.screenshot({path:join(evidence,'real-runs.png')})
   // Verify that persisted prompt and actual model registration are visible.
   await page.goto(base+'/#/prompts')
   await page.getByText('Fixture prompt',{exact:true}).first().waitFor()
@@ -36,7 +39,7 @@ try {
     for (const locale of ['zh-CN','en-US']) {
       await page.locator('main select').nth(1).selectOption(locale)
       await page.waitForFunction(v=>document.documentElement.lang===v || document.querySelector('main h2')?.textContent===(v==='en-US'?'Preferences':'个人偏好'),locale)
-      await page.screenshot({path:'frontend/qa/evidence/settings-'+theme+'-'+locale+'.png'})
+      await page.screenshot({path:join(evidence,'settings-'+theme+'-'+locale+'.png')})
     }
   }
   for (const width of [1440,1024,768,390]) {
@@ -47,11 +50,14 @@ try {
       assert.equal(new URL(page.url()).hash,'#/'+route)
       await page.waitForFunction(r => document.querySelector('.heading .eyebrow')?.textContent?.includes(r.toUpperCase()),route)
       assert.ok(await page.locator('main h1').isVisible())
-      if (route==='home'||route==='chat'||route==='models') await page.screenshot({path:'frontend/qa/evidence/'+route+'-'+width+'.png'})
+      if (route==='home'||route==='chat'||route==='models') await page.screenshot({path:join(evidence,route+'-'+width+'.png')})
     }
   }
   assert.deepEqual(errors,[])
   console.log('PASS: real browser login, persisted runs/prompts, workspace creation, all 10 routes at four viewport widths, three themes and two locales')
+} catch (error) {
+  await page.screenshot({path:join(evidence,'failure.png'),fullPage:true}).catch(()=>{})
+  throw error
 } finally {
   await browser.close()
 }

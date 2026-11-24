@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "qa:browser": "node qa/p1-browser-smoke.mjs"
   },
   "dependencies": {
     "vue": "3.5.22",
@@ -15,9 +16,10 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "6.0.1",
-    "vite": "7.1.9",
+    "vite": "7.3.8",
     "typescript": "5.9.3",
     "vue-tsc": "3.1.1",
-    "@types/node": "22.18.10"
+    "@types/node": "22.18.10",
+    "playwright": "1.64.0"
   }
 }
