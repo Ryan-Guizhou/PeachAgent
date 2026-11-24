@@ -102,8 +102,9 @@ class Client:
                 reconnects += 1
                 time.sleep(.05)
         detail = self.call("GET", scope + "/runs/" + run_id)
-        assert terminal and first is not None and detail["status"] == "SUCCEEDED", (
-            run_id, "Incomplete SSE", types, reconnects, detail.get("status"), detail.get("errorCode"))
+        if not terminal or first is None or detail["status"]!="SUCCEEDED":
+            calls=mysql("SELECT STATUS,COALESCE(ERROR_CODE,'NONE'),DISPATCH_INTENT_AT IS NOT NULL FROM RT_MODEL_CALL WHERE RUN_ID="+quote_id(run_id)+";")
+            raise AssertionError((run_id,"Incomplete SSE",types,reconnects,detail.get("status"),detail.get("errorCode"),calls))
         return first, reconnects
 
 

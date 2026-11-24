@@ -14,6 +14,8 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
+import org.springframework.dao.ConcurrencyFailureException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
@@ -38,7 +40,7 @@ public class RunWorker {
         if(stopping.get())return;
         while(!stopping.get() && capacity.tryAcquire()){
             RunService.Claim claim;
-            try{claim=runs.claim(owner);}catch(Exception ex){capacity.release();log.warn("Run claim failed");return;}
+            try{claim=runs.claim(owner);}catch(Exception ex){capacity.release();log.warn("Run claim failed type={}",ex.getClass().getSimpleName());return;}
             if(claim==null){capacity.release();return;}
             try {
                 tasks.submit(() -> {
@@ -65,11 +67,12 @@ public class RunWorker {
     @Scheduled(fixedDelay=60000)
     public void cleanup(){artifacts.cleanup();}
     private void execute(RunService.Claim c){
-        String call=null,code=null;ModelExecution result=null;long start=System.nanoTime();
+        String call=null,code=null,stage="prepare";ModelExecution result=null;long start=System.nanoTime();
         ModelExecutionContext context=null;ScheduledFuture<?> pulse=null;
         try{
             var p=c.payload();var prepared=models.prepare(c.scope(),p.model());
-            call=runs.startCall(c,prepared.credential().revision());
+            stage="reserve";
+            call=retryLocal(c,"reserve",()->runs.startCall(c,prepared.credential().revision()));
             final String callId=call;
             StringBuilder buffer=new StringBuilder();long[] last={0};
             context=new ModelExecutionContext(prepared.transport(),delta->{
@@ -86,15 +89,39 @@ public class RunWorker {
             // 在实际派发前重新检查版本、凭证与租约；不以旧快照绕过撤权。
             var latest=models.prepare(c.scope(),p.model());
             if(latest.credential().revision()!=prepared.credential().revision())throw new DomainException("CREDENTIAL_CHANGED",409,"Credential changed before dispatch");
-            runs.dispatch(c,call);context.checkActive();
+            stage="dispatch-intent";
+            retryLocal(c,"dispatch-intent",()->{runs.dispatch(c,callId);return null;});
+            context.checkActive();
+            stage="provider-execution";
             try{result=prepared.adapter().execute(new ModelExecutionRequest(p.model().operation(),p.model().externalModelId(),p.messages(),p.input(),p.model().options(),p.maxOutputTokens(),audio),context);}
             finally{if(!buffer.isEmpty())runs.delta(c,callId,buffer.toString());}
         }catch(DomainException ex){code=ex.code();result=null;}
-        catch(Exception ex){code="MODEL_EXECUTION_FAILED";result=null;log.warn("Run execution failed runId={}",c.id());}
+        catch(Exception ex){code="MODEL_EXECUTION_FAILED";result=null;
+            Throwable cause=ex.getCause();
+            log.warn("Run execution failed runId={} stage={} type={} cause={}",c.id(),stage,ex.getClass().getSimpleName(),
+                    cause==null?"none":cause.getClass().getSimpleName());
+        }
         finally{
             if(pulse!=null)pulse.cancel(false);
             if(context!=null)context.cancel();
             settle(c,call,result,code,TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start));
+        }
+    }
+
+    /** 仅对派发前明确回滚的数据库并发失败进行有限重试。 */
+    private <T> T retryLocal(RunService.Claim claim,String phase,Supplier<T> action){
+        for(int attempt=1;;attempt++){
+            try{return action.get();}
+            catch(ConcurrencyFailureException ex){
+                if(attempt>=3)throw ex;
+                log.warn("Transient local run transaction failure runId={} phase={} attempt={} type={}",
+                        claim.id(),phase,attempt,ex.getClass().getSimpleName());
+                try{Thread.sleep(20L*attempt);}
+                catch(InterruptedException interrupted){
+                    Thread.currentThread().interrupt();
+                    throw new DomainException("RUN_STOPPED",409,"Worker interrupted");
+                }
+            }
         }
     }
 
