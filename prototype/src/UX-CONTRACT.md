@@ -29,7 +29,10 @@
 | Search | Studio.search / .search-field | core.js | 页面对象搜索、清除 | 内容测试中的 IME、分页和空态 |
 | Route | Studio.page / Studio.go | core.js | History API 管理的 hash 页面与详情 | navigation-contract DOM/history 模型与路由注册 |
 | Auth | StudioAuth | auth.js | 登录、注册、恢复、过期、账户弹窗 | auth-contract / navigation-contract |
-| Workspace | StudioSpaces | spaces.js | 默认空间、创建、重命名、切换 | appearance-contract 已定义；新增能力尚未完整回归 |
+| Workspace | StudioSpaces | spaces.js | 默认空间、创建、重命名、切换、归档与恢复 | appearance-contract |
+| Project | StudioProjects | projects.js | 项目生命周期、项目级数据与版本副本 | baseline-contract |
+| Credentials | Studio.Credentials | credentials.js | 引用管理、绑定、轮换和撤销 | baseline-contract |
+| Inbox | Studio.Inbox | inbox.js | 三类待办入口与当前角色 | baseline-contract |
 | Appearance | StudioAppearance | appearance.js / theme-engine.css | 三主题、核心中英文、浏览器偏好 | appearance-contract 已定义；真实视觉及完整翻译待验收 |
 | Model selection | Studio.Models.selectionOptions / freezeBinding | models.js / model-bindings.js | 按类型与能力过滤，稳定 ID，原生 select | models-contract / model-integration |
 | Delegation | Studio.Planning | planning.js | 临时子 Agent、任务 DAG、模型池 | planning-contract 实际子运行与审批 |
@@ -67,7 +70,7 @@
 
 登录是独立页面壳。注册、登录与恢复都有字段错误、提交状态、密码显隐和自动填充语义；允许密码管理器和粘贴。安全的站内返回路径保留必要对象参数，敏感输入不进入 URL。原有用户可直接进入演示空间。
 
-注册账户有默认本地空间，可继续创建、重命名和切换空间；新空间带独立示例数据。业务状态按账户和空间保存，默认空间兼容旧数据。启动时捕获存储 key，身份或空间切换重载，防止过渡期串写。切换空间前检查未保存编辑并保存当前状态，切换时停止本地运行；当前不提供云同步、协作成员或服务端多租户授权。
+注册账户有默认本地空间，可继续创建、重命名和切换空间；新空间带独立示例数据。业务状态按账户、空间和项目保存，默认空间的默认项目兼容旧数据。启动时捕获存储 key，身份、空间或项目切换重载，防止过渡期串写。切换空间前检查未保存编辑并保存当前状态，切换时停止本地运行；当前不提供云同步、协作成员或服务端多租户授权。
 
 密码仅保存加盐验证器；演示重置码只在内存存活且有到期与一次使用规则。会话过期／退出停止活跃运行、评测与子计划，清理临时 Key；未保存编辑通过应用弹窗处理。语言切换前检查脏状态、未保存表单以及打开的弹窗；有编辑时拒绝切换并提示先保存或放弃。空间切换复用会话清理，停止运行、评测和计划并检查持久化结果；失败留在原空间，已停止任务不自动恢复。空间名称由注册表维护。
 
@@ -126,3 +129,10 @@
 
 静态检查与 Node VM 渲染不是浏览器验收。真实点击、焦点、窄屏、拖动、原生选择框、下载、剪贴板、减少动效和视觉布局仍应在目标浏览器中验证；本契约不宣称这些检查已经完成。
 
+
+## 项目、凭证及统一待办补充约束
+
+- 项目和空间仅可删除从未保存业务数据且已归档的非默认项；切换前检查编辑、保存和停止任务。跨项目资源复用为显式版本副本，不是跨项目访问授权。模型、知识库副本重新配置凭证及检索依赖。
+- 凭证中心只保存引用、状态与轮换修订号；格式校验不等同于真实连通性。撤销时阻止当前模型与工具调用，审批恢复时重新校验。应用 Key 保持独立的签发、领取和吊销。
+- Chat 不调用写入或委派；Plan 先生成计划，不调用计划工具；Agent 模式复用原权限、审批与预算。运行中不得切换该会话模式。
+- 待办中心汇总运行审批、应用 Key 申请及公共资源审核，操作仍由各自页面和原权限校验负责。原型市场仅为当前项目的本地演示，插件发布仅导出受控模拟动作定义，不携带连接凭证、实例配置和执行历史。

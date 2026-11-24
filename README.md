@@ -33,7 +33,7 @@ python3 -m http.server 8080 --directory prototype
 
 也可下载 [OTRYX_Studio.html](prototype/OTRYX_Studio.html) 后直接用浏览器打开；GitHub 文件页本身显示的是源代码。
 
-建议依次体验空间切换、模型管理、工作流与 Agent、运行追踪、数据集评测和应用发布/API Key。原型提供三套主题及核心中英切换，业务数据保存在本地浏览器；外部调用、凭证和费用采用模拟数据。详细边界与验证状态见[原型说明](prototype/README.md)。
+建议依次体验空间与项目切换、固定版本资源副本、模型与凭证管理、工作流与 Agent、待办审批、运行追踪、数据集评测、应用发布/API Key 和市场审核。原型提供三套主题及核心中英切换，业务数据保存在本地浏览器；外部调用、凭证和费用采用模拟数据。详细边界与验证状态见[原型说明](prototype/README.md)。
 
 <!-- doc-section:architecture -->
 ## 产品如何组织
