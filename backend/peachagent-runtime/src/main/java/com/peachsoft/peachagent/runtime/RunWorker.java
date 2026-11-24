@@ -17,6 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Profile;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import jakarta.annotation.PreDestroy;
@@ -32,7 +33,7 @@ public class RunWorker {
     private final Semaphore capacity=new Semaphore(32);
     private final AtomicBoolean stopping=new AtomicBoolean();
     public RunWorker(RunService runs,ModelService models,ArtifactStore artifacts,IdGenerator ids){this.runs=runs;this.models=models;this.artifacts=artifacts;this.owner=ids.nextId();}
-    @Scheduled(fixedDelay=250)
+    @Scheduled(fixedDelay=100)
     public void poll(){
         if(stopping.get())return;
         while(!stopping.get() && capacity.tryAcquire()){
@@ -70,10 +71,10 @@ public class RunWorker {
             var p=c.payload();var prepared=models.prepare(c.scope(),p.model());
             call=runs.startCall(c,prepared.credential().revision());
             final String callId=call;
-            StringBuilder buffer=new StringBuilder();long[] last={System.nanoTime()};
+            StringBuilder buffer=new StringBuilder();long[] last={0};
             context=new ModelExecutionContext(prepared.transport(),delta->{
                 buffer.append(delta);
-                if(buffer.length()>=2048||System.nanoTime()-last[0]>=100_000_000L){
+                if(last[0]==0||buffer.length()>=2048||System.nanoTime()-last[0]>=100_000_000L){
                     runs.delta(c,callId,buffer.toString());buffer.setLength(0);last[0]=System.nanoTime();
                 }
             });
@@ -93,9 +94,29 @@ public class RunWorker {
         finally{
             if(pulse!=null)pulse.cancel(false);
             if(context!=null)context.cancel();
-            try{runs.finish(c,call,result,code,TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start));}
-            catch(Exception ex){log.error("Run settlement failed runId={}",c.id());}
+            settle(c,call,result,code,TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-start));
         }
     }
+
+    /** 只重试已回滚的本地结算事务，绝不再次执行供应商请求。 */
+    private void settle(RunService.Claim claim,String call,ModelExecution result,String code,long elapsed){
+        for(int attempt=1;attempt<=3;attempt++){
+            try{
+                runs.finish(claim,call,result,code,elapsed);
+                return;
+            }catch(TransientDataAccessException ex){
+                log.warn("Transient run settlement failure runId={} attempt={} type={}",claim.id(),attempt,ex.getClass().getSimpleName());
+                if(attempt==3)break;
+                try{Thread.sleep(25L*attempt);}catch(InterruptedException interrupted){
+                    Thread.currentThread().interrupt();break;
+                }
+            }catch(Exception ex){
+                log.error("Run settlement failed runId={} type={}",claim.id(),ex.getClass().getSimpleName());
+                return;
+            }
+        }
+        log.error("Run settlement deferred to lease recovery runId={}",claim.id());
+    }
+
     @PreDestroy public void stop(){stopping.set(true);tasks.shutdownNow();timers.shutdownNow();}
 }

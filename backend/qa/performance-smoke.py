@@ -79,22 +79,32 @@ class Client:
         return json.loads(body) if body else None
 
     def events(self, scope, run_id):
-        req = urllib.request.Request(BASE + "/api/v1" + scope + "/runs/" + run_id + "/events",
-                                     headers={"Accept": "text/event-stream", "Origin": ORIGIN})
-        first, terminal, last = None, False, 0
-        with self.opener.open(req, timeout=45) as response:
-            for raw in response:
-                line = raw.decode("utf-8").strip()
-                if line.startswith("data: "):
-                    event = json.loads(line[6:])
-                    assert event["seq"] > last, "Non-monotonic SSE"
-                    last = event["seq"]
-                    if event["eventType"] == "delta" and first is None:
-                        first = time.monotonic()
-                    if event["eventType"] == "terminal":
-                        terminal = True
-        assert terminal and first is not None, (run_id, "Missing SSE delta or terminal")
-        return first
+        first, terminal, last, reconnects = None, False, 0, 0
+        end = time.monotonic() + 90
+        types = []
+        while not terminal and time.monotonic() < end:
+            req = urllib.request.Request(BASE + "/api/v1" + scope + "/runs/" + run_id + "/events",
+                                         headers={"Accept": "text/event-stream", "Origin": ORIGIN,
+                                                  "Last-Event-ID": str(last)})
+            with self.opener.open(req, timeout=45) as response:
+                for raw in response:
+                    line = raw.decode("utf-8").strip()
+                    if line.startswith("data: "):
+                        event = json.loads(line[6:])
+                        assert event["seq"] == last + 1, (run_id, "SSE sequence gap", last, event["seq"])
+                        last = event["seq"]
+                        types.append(event["eventType"])
+                        if event["eventType"] == "delta" and first is None:
+                            first = time.monotonic()
+                        if event["eventType"] == "terminal":
+                            terminal = True
+            if not terminal:
+                reconnects += 1
+                time.sleep(.05)
+        detail = self.call("GET", scope + "/runs/" + run_id)
+        assert terminal and first is not None and detail["status"] == "SUCCEEDED", (
+            run_id, "Incomplete SSE", types, reconnects, detail.get("status"), detail.get("errorCode"))
+        return first, reconnects
 
 
 def mail_code(email):
@@ -297,14 +307,14 @@ def submit(scope, client):
     created = (time.monotonic() - start) * 1000
     duplicate = client.call("POST", path, payload, key=marker)
     assert duplicate["id"] == run["id"], "Duplicate run"
-    first = client.events(scope["path"], run["id"])
+    first, reconnects = client.events(scope["path"], run["id"])
     detail = client.call("GET", scope["path"] + "/runs/" + run["id"])
     assert detail["status"] == "SUCCEEDED", detail
     with LOCK:
         observed = REQUESTS[marker]
         assert observed["count"] == 1, "Provider replay"
         delay = observed["first"] - observed["arrived"]
-    return marker, run["id"], created, max(0., (first - start - delay) * 1000)
+    return marker, run["id"], created, max(0., (first - start - delay) * 1000), reconnects
 
 
 def create_benchmark(scopes):
@@ -411,7 +421,8 @@ def main():
                 PEAKS[key] = 0
         soaked, elapsed = soak_benchmark(scopes)
         report["soak"] = {"durationSeconds": round(elapsed, 3), "samples": len(soaked), "peaks": dict(PEAKS),
-                          "platformFirstEventP95Ms": p95([row[3] for row in soaked])}
+                          "platformFirstEventP95Ms": p95([row[3] for row in soaked]),
+                          "sseReconnects": sum(row[4] for row in soaked)}
         report["reconciliation"] = reconcile(created + soaked)
         thresholds = {
             "runRead": report["read"]["runP95Ms"] <= 200,

@@ -45,13 +45,14 @@ jobs:
           API=$!
           java -jar "$JAR" --spring.profiles.active=worker > perf-worker.log 2>&1 &
           WORKER=$!
-          trap 'kill "$API" "$WORKER" 2>/dev/null || true' EXIT
+          trap 'kill "$API" "$WORKER" 2>/dev/null || true; grep -E "Run (claim|execution|settlement|recovery)|Transient run settlement|Deadlock|WARN|ERROR" perf-worker.log | tail -n 60 || true' EXIT
           for i in $(seq 1 90); do
             if curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"' && grep -q 'Started PeachAgentApplication' perf-worker.log; then break; fi
             kill -0 "$API" "$WORKER"; sleep 2
           done
           curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'
           grep -q 'Started PeachAgentApplication' perf-worker.log
+          kill -0 "$API" "$WORKER"
           python3 backend/qa/performance-smoke.py
       - name: Upload benchmark evidence
         if: always()

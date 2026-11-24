@@ -164,6 +164,41 @@ try:
     version=c.call("POST",p+"/prompts/"+prompt["id"]+"/versions",{"changeNote":"Initial","rowVersion":prompt["rowVersion"]})
     preview=c.call("POST",p+"/prompts/"+prompt["id"]+"/preview",{"versionId":version["id"],"values":{"name":"QA"}})
     assert preview["text"]=="Say hello to QA"
+    # Missing type is a domain validation error, not an internal exception.
+    c.call("POST",p+"/prompts",{"name":"Invalid variable","content":"{{x}}",
+           "variables":{"x":{"required":True}},"rowVersion":None},expected=422)
+    pinned_prompt=c.call("POST",p+"/prompts",{"name":"Version freeze QA","description":"",
+             "content":"Original {{name}}","variables":{"name":{"type":"string","required":True}},"rowVersion":None})
+    pinned_version=c.call("POST",p+"/prompts/"+pinned_prompt["id"]+"/versions",
+                          {"changeNote":"First version","rowVersion":pinned_prompt["rowVersion"]})
+    current_prompt=next(x for x in c.call("GET",p+"/prompts") if x["id"]==pinned_prompt["id"])
+    edited=c.call("PATCH",p+"/prompts/"+pinned_prompt["id"],{"name":"Version freeze QA","description":"",
+            "content":"Updated {{name}}","variables":{"name":{"type":"string","required":True}},
+            "rowVersion":current_prompt["rowVersion"]})
+    new_version=c.call("POST",p+"/prompts/"+pinned_prompt["id"]+"/versions",
+                       {"changeNote":"Second version","rowVersion":edited["rowVersion"]})
+    assert new_version["versionNo"]==2
+    pinned=c.call("POST",p+"/prompts/"+pinned_prompt["id"]+"/preview",{"versionId":pinned_version["id"],"values":{"name":"QA"}})
+    assert pinned["text"]=="Original QA"
+    latest=c.call("POST",p+"/prompts/"+pinned_prompt["id"]+"/preview",{"versionId":new_version["id"],"values":{"name":"QA"}})
+    assert latest["text"]=="Updated QA"
+    manifest={"pluginKey":"qa.fixture","pluginVersion":"1.0.0","name":"Fixture manifest","description":"",
+              "configSchema":{"type":"object","properties":{"count":{"type":"integer","minimum":1,"maximum":3}},
+                              "required":["count"],"additionalProperties":False},
+              "permissions":["model.invoke"],"extensionPoints":["studio.panel"]}
+    invalid={**manifest,"configSchema":{"type":"object","properties":{"count":{}}}}
+    c.call("POST",w+"/plugin-manifests/validate",invalid,expected=422)
+    assert c.call("POST",w+"/plugin-manifests/validate",manifest)["valid"]
+    entry=c.call("POST",w+"/plugin-manifests",manifest)
+    c.call("POST",w+"/plugin-manifests",manifest,expected=409)
+    row=next(x for x in c.call("GET",w+"/plugin-manifests") if x["id"]==entry["id"])
+    assert row["status"]=="DRAFT"
+    c.call("POST",w+"/plugin-manifests/"+row["id"]+"/declare",{"rowVersion":row["rowVersion"]})
+    row=next(x for x in c.call("GET",w+"/plugin-manifests") if x["id"]==entry["id"])
+    assert row["status"]=="DECLARED"
+    c.call("POST",w+"/plugin-manifests/"+row["id"]+"/archive",{"rowVersion":row["rowVersion"]})
+    assert next(x for x in c.call("GET",w+"/plugin-manifests") if x["id"]==entry["id"])["status"]=="ARCHIVED"
+    print("PASS: Prompt schema rejection and immutable versions, plugin validation/duplicate/declare/archive")
     conv=c.call("POST",p+"/conversations",{"title":"Fixture conversation"})
     model=next(m for k,m in models.items() if k.startswith("openai") and m["modelType"]=="LLM")
     body={"modelId":model["id"],"text":"Hello","promptVersionId":version["id"],"variables":{"name":"QA"},"maxOutputTokens":128}
@@ -175,6 +210,22 @@ try:
     msgs=c.call("GET",p+"/conversations/"+conv["id"]+"/messages")
     assert msgs[-1]["content"]=="Fixture answer" and msgs[-1]["status"]=="COMPLETE"
     other.call("GET",p+"/runs/"+run["id"],expected=404)
+    # Fixed-version references are scoped to another project in the same workspace.
+    target_project=c.call("POST",w+"/projects",{"name":"Prompt reference QA","description":""},expected=201)
+    target=p.rsplit("/",1)[0]+"/"+target_project["id"]
+    c.call("POST",target+"/model-bindings",{"modelId":model["id"],"active":True})
+    target_conv=c.call("POST",target+"/conversations",{"title":"Reference QA"})
+    ref_body={"modelId":model["id"],"text":"Reference test","promptVersionId":pinned_version["id"],
+              "variables":{"name":"QA"},"maxOutputTokens":32}
+    c.call("POST",target+"/conversations/"+target_conv["id"]+"/runs",ref_body,key=key(),expected=404)
+    c.call("POST",target+"/prompt-references",{"sourceProjectId":project["id"],"versionId":pinned_version["id"],"alias":"Pinned QA"})
+    ref_run=c.call("POST",target+"/conversations/"+target_conv["id"]+"/runs",ref_body,key=key())
+    wait(c,target,ref_run)
+    reference=next(x for x in c.call("GET",target+"/prompt-references") if x["promptVersionId"]==pinned_version["id"])
+    c.call("POST",target+"/prompt-references/"+reference["id"]+"/revoke",{"rowVersion":reference["rowVersion"]})
+    c.call("POST",target+"/conversations/"+target_conv["id"]+"/runs",ref_body,key=key(),expected=404)
+    assert c.call("GET",target+"/runs/"+ref_run["id"])["status"]=="SUCCEEDED"
+    print("PASS: fixed Prompt reference authorization and revocation preserve historical runs")
     usage=c.call("GET",p+"/usage?from=20000101000000&to=20990101000000")
     assert len(usage)>=len(descriptors)+1 and any(x["totalTokens"]==15 for x in usage)
     assert all(x["inflightCount"]==0 for x in c.call("GET",p+"/budgets"))

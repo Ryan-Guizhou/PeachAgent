@@ -33,6 +33,20 @@ public class BudgetService {
                          Long maxRunTokens,BigDecimal maxRunCost,long rowVersion) { }
 
     private List<Map<String,Object>> policies(ScopeContext s,boolean lock){
+        if(lock){
+            // 排序后的结果不代表 InnoDB 实际加锁顺序，逐级唯一键点查保证一致。
+            List<Map<String,Object>> locked=new ArrayList<>();
+            for(int index=0;index<3;index++){
+                String kind=List.of("TENANT","WORKSPACE","PROJECT").get(index);
+                String scope=List.of(s.tenantId(),s.workspaceId(),s.requireProject()).get(index);
+                locked.addAll(jdbc.queryForList("""
+                        SELECT ID,SCOPE_TYPE,SCOPE_ID,PERIOD_TYPE,MAX_CALLS,MAX_TOKENS,MAX_COST,CURRENCY,
+                            MAX_CONCURRENCY,MAX_RUN_SECONDS,MAX_RUN_TOKENS,MAX_RUN_COST,INFLIGHT_COUNT,STATUS,ROW_VERSION
+                        FROM BUDGET_POLICY WHERE TENANT_ID = ? AND SCOPE_TYPE = ? AND SCOPE_ID = ? FOR UPDATE
+                        """,s.tenantId(),kind,scope));
+            }
+            return requirePolicies(locked);
+        }
         var rows=jdbc.queryForList("""
                 SELECT ID,SCOPE_TYPE,SCOPE_ID,PERIOD_TYPE,MAX_CALLS,MAX_TOKENS,MAX_COST,CURRENCY,
                     MAX_CONCURRENCY,MAX_RUN_SECONDS,MAX_RUN_TOKENS,MAX_RUN_COST,INFLIGHT_COUNT,STATUS,ROW_VERSION
@@ -40,7 +54,11 @@ public class BudgetService {
                 ((SCOPE_TYPE = 'TENANT' AND SCOPE_ID = ?) OR (SCOPE_TYPE = 'WORKSPACE' AND SCOPE_ID = ?) OR
                 (SCOPE_TYPE = 'PROJECT' AND SCOPE_ID = ?))
                 ORDER BY CASE SCOPE_TYPE WHEN 'TENANT' THEN 1 WHEN 'WORKSPACE' THEN 2 ELSE 3 END
-                """+(lock?" FOR UPDATE":""),s.tenantId(),s.tenantId(),s.workspaceId(),s.requireProject());
+                """,s.tenantId(),s.tenantId(),s.workspaceId(),s.requireProject());
+        return requirePolicies(rows);
+    }
+
+    private List<Map<String,Object>> requirePolicies(List<Map<String,Object>> rows){
         if(rows.size()!=3||rows.stream().anyMatch(x->!"ACTIVE".equals(x.get("STATUS"))))
             throw new DomainException("BUDGET_POLICY_MISSING",409,"Active budget policy required");
         return rows;

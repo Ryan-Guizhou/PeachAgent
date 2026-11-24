@@ -336,12 +336,14 @@ public class RunService {
                         WHERE ID = ? AND RUN_ID = ?
                         """,callState,now,Math.max(0,elapsed),usage.inputTokens(),usage.outputTokens(),usage.totalTokens(),usage.cachedTokens(),usage.reasoningTokens(),
                         json(usage.detail()),usage.source(),cost,cost==null?"UNKNOWN":"ESTIMATED",result==null?null:result.providerRequestId(),failure,now,call,c.id());
+                // 模型诊断的版本更新先于预算策略锁，避免与并发插入调用的模型 FK 锁形成逆序。
+                if(result!=null&&!cancelled&&"MODEL_DEBUG".equals(c.runType()))
+                    models.markVerified(c.scope(),c.payload().model(),credentialRevision(call));
                 budgets.settle(c.scope(),call,sent,usage.totalTokens(),cost);
                 if(result!=null&&!cancelled){
                     Map<String,Object> payload=new LinkedHashMap<>(result.result()==null?Map.of():result.result());
                     if(result.artifact()!=null)payload.put("artifactId",artifacts.output(c.scope(),c.id(),call,result.artifact(),result.mimeType()));
                     event(row(c.id(),true),"result",payload,now);
-                    if("MODEL_DEBUG".equals(c.runType()))models.markVerified(c.scope(),c.payload().model(),credentialRevision(call));
                 }
             }
             terminal(r,state,failure,now,result==null?null:result.result());
