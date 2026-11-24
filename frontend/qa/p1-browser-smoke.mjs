@@ -134,6 +134,12 @@ try {
   await page.locator('.dialog input').first().fill('Browser QA workspace')
   await page.locator('.dialog button[type=submit], .dialog button.primary').first().click()
   await page.locator('.scope select').first().locator('option').filter({hasText:'Browser QA workspace'}).waitFor({state:'attached',timeout:15000})
+  // The option appears before async project reload and dirty-dialog cleanup complete.
+  await page.locator('.overlay').waitFor({state:'hidden',timeout:20000})
+  await page.waitForFunction(({workspaceId,projectId})=>{
+    const selectors=document.querySelectorAll('.scope select')
+    return selectors[0]?.value===workspaceId&&selectors[1]?.value===projectId
+  },{workspaceId,projectId},{timeout:20000})
   await page.goto(base+'/#/usage')
   await page.locator('#budget-overview-title').waitFor()
   await page.locator('.budget-block').last().waitFor()
