@@ -5,6 +5,8 @@ on:
       - 'backend/**'
       - 'frontend/**'
       - 'compose.dev.yml'
+      - 'database/**'
+      - 'scripts/**'
       - '.github/workflows/p1-backend.yml'
   workflow_dispatch:
 permissions:
@@ -12,7 +14,20 @@ permissions:
 jobs:
   backend:
     runs-on: ubuntu-24.04
-    timeout-minutes: 18
+    timeout-minutes: 22
+    strategy:
+      fail-fast: false
+      matrix:
+        mysql: ['5.7.44', '8.4']
+    env:
+      MYSQL_IMAGE: mysql:${{ matrix.mysql }}
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: '1025'
+      SMTP_AUTH: 'false'
+      SMTP_SSL: 'false'
+      SMTP_TLS: 'false'
+      MAIL_FROM: qa@example.invalid
+      PEACHAGENT_TEST_SMTP: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -34,15 +49,34 @@ jobs:
           npm ci --no-audit --no-fund
           npm run build
           npx playwright install --with-deps chromium
+      - name: Verify Java engineering rules
+        run: python3 scripts/check-java-style.py
       - name: Compile and unit tests
         run: mvn -B -f backend/pom.xml verify
-      - name: Start real database, Redis and SMTP
+      - name: Start isolated SMTP fixture
+        run: |
+          python3 backend/qa/smtp-fixture.py > smtp-fixture.log 2>&1 &
+          python3 - <<'PY'
+          import socket, time, urllib.request
+          for _ in range(60):
+              try:
+                  with socket.create_connection(("127.0.0.1",1025),timeout=2) as smtp:
+                      assert smtp.recv(256).startswith(b"220")
+                  with urllib.request.urlopen("http://127.0.0.1:8025/api/v1/messages",timeout=2) as response:
+                      assert response.status==200
+                  break
+              except (OSError,AssertionError):
+                  time.sleep(1)
+          else:
+              raise RuntimeError("SMTP fixture readiness timeout")
+          PY
+      - name: Start real database and Redis
         env:
           MYSQL_ROOT_PASSWORD: ci-only-root
           DB_USER: peachagent
           DB_PASSWORD: ci-only-db
           REDIS_PASSWORD: ci-only-redis
-        run: docker compose -f compose.dev.yml up -d --wait mysql redis mailpit
+        run: docker compose -f compose.dev.yml up -d --wait mysql redis
       - name: Verify API and worker startup
         env:
           DB_URL: jdbc:mysql://127.0.0.1:3306/peachagent
@@ -66,21 +100,6 @@ jobs:
             kill -0 "$API"; sleep 2
           done
           curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'
-          # Both Mailpit HTTP and SMTP listeners must be ready before challenge creation.
-          python3 - <<'PY'
-          import socket, time, urllib.request
-          for _ in range(60):
-              try:
-                  with socket.create_connection(("127.0.0.1",1025),timeout=2) as smtp:
-                      assert smtp.recv(256).startswith(b"220")
-                  with urllib.request.urlopen("http://127.0.0.1:8025/api/v1/messages",timeout=2) as response:
-                      assert response.status==200
-                  break
-              except (OSError,AssertionError):
-                  time.sleep(1)
-          else:
-              raise RuntimeError("Mailpit readiness timeout")
-          PY
           python3 backend/qa/iam-smoke.py
           # Fail quickly on real navigation/history regressions before Runtime and fault tests.
           node frontend/qa/p1-studio-matrix.mjs --navigation-only
@@ -112,7 +131,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: p1-browser-evidence
+          name: p1-browser-evidence-${{ matrix.mysql }}
           path: frontend/qa/evidence/
           if-no-files-found: ignore
       - name: Cleanup

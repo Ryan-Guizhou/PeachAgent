@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - "frontend/**"
+      - "backend/**"
+      - "compose.dev.yml"
       - ".github/workflows/p1-frontend.yml"
 jobs:
   build:
