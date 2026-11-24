@@ -36,6 +36,8 @@ jobs:
           DB_PASSWORD: ci-only-db
           REDIS_PASSWORD: ci-only-redis
           COOKIE_SECURE: 'false'
+          PEACHAGENT_ALLOWED_INTERNAL_ORIGINS: http://127.0.0.1:18081
+          CREDENTIAL_KEK: 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY='
         run: |
           set -euo pipefail
           JAR=backend/peachagent-bootstrap/target/peachagent-bootstrap-1.0.0-SNAPSHOT.jar
@@ -56,6 +58,7 @@ jobs:
           done
           grep -q 'Started PeachAgentApplication' worker.log
           kill -0 "$WORKER"
+          python3 backend/qa/runtime-smoke.py
       - name: Cleanup
         if: always()
         env:
