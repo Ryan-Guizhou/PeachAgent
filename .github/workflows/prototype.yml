@@ -26,3 +26,17 @@ jobs:
         run: |
           python prototype/src/build.py
           git diff --exit-code -- prototype/OTRYX_Studio.html
+  browser-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser test driver
+        run: npm install --prefix "$RUNNER_TEMP/peachagent-browser-qa" --no-save --no-package-lock playwright@1.56.1
+      - name: Chromium browser smoke
+        env:
+          NODE_PATH: ${{ runner.temp }}/peachagent-browser-qa/node_modules
+        run: node prototype/src/qa/browser-smoke.cjs
