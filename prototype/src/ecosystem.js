@@ -61,7 +61,7 @@
       const snapshot = S.ContentStore?.getContent(id, version);
       return snapshot ? { ...asset, ...snapshot } : null;
     }
-    return asset;
+    return asset && version && String(asset.version)!==String(version) ? null : asset;
   };
   const getResource = id => allResources().find(a => a.id === id);
   function installedTarget(id) {
@@ -104,6 +104,14 @@
     return graph;
   }
   function publicEndpoint(value) { try { const url = new URL(value); return /^https?:$/.test(url.protocol) ? url.origin + url.pathname : undefined; } catch (_) { return undefined; } }
+  // Public plugin packages only contain a portable allow-listed adapter manifest.
+  // Never publish instance endpoints, configuration, credentials or execution history.
+  function publicPluginManifest(plugin) {
+    const allowed = new Set(['docs.create','table.upsert','web.search','web.fetch','workspace.write']);
+    const actions=(plugin.toolIds||[]).map(id=>(S.Runtime?.tools||[]).find(t=>t.id===id)).filter(Boolean).map(tool=>({name:tool.name,title:tool.title,adapterId:tool.adapterId||tool.originToolId||tool.id}));
+    if(!actions.length||actions.length!==(plugin.toolIds||[]).length||actions.length>12||actions.some(action=>!action.name||!allowed.has(action.adapterId))||new Set(actions.map(action=>action.name)).size!==actions.length)return null;
+    return {name:String(plugin.name||'Plugin'),description:String(plugin.description||''),version:String(plugin.version||'1.0.0'),actions};
+  }
   function shareable() {
     const contents = S.ContentStore?.listContent({ archived: false }) || [];
     const flows = (S.state.workflow?.flows || []).filter(f => f.publishedSnapshot || f.published).map(f => ({ id: f.id, type: 'workflow', name: f.title, description: f.description, content: JSON.stringify(publicSnapshot(f.publishedSnapshot || f), null, 2), version: (f.publishedSnapshot || f).version, tags: ['工作流'], workflowSnapshot: publicSnapshot(f.publishedSnapshot || f) }));
@@ -112,7 +120,15 @@
       const configTemplate = { transport: c.transport || 'Streamable HTTP', location: c.location || '平台 Runner', endpoint };
       return { id: c.id, type: 'mcp', name: c.name, description: c.description || 'MCP 连接模板；安装者自行配置授权。', endpoint, transport: configTemplate.transport, location: configTemplate.location, configTemplate, content: JSON.stringify({ ...configTemplate, description: c.description || '', toolNames: (S.Runtime?.tools || []).filter(t => t.connectionId === c.id).map(t => t.name), note: c.transport === 'stdio' ? '启动命令、参数和环境变量由安装者自行配置，不在公共模板中共享。' : '授权与凭据引用由安装者自行配置。' }, null, 2), version: c.version || '1.0.0', tags: ['MCP 模板'] };
     });
-    return contents.concat(flows, connections);
+    const plugins=(S.Runtime?.plugins||[]).filter(p=>p.installed!==false&&p.status==='installed').map(p=>{
+      const manifest=publicPluginManifest(p);if(!manifest)return null;
+      return {id:p.id,type:'plugin',name:manifest.name,description:manifest.description||'可移植的插件动作清单',version:manifest.version,tags:['插件模板'],content:JSON.stringify(manifest,null,2),configTemplate:{manifest}};
+    }).filter(Boolean);
+    const agents=(S.state.agents||[]).filter(a=>a.publishedConfig).map(a=>{
+      const v=a.publishedConfig;
+      return {id:a.id,type:'agent',name:v.name,description:v.description||'智能体提示词模板；能力由安装者重新配置',version:v.version||a.version,tags:['Agent 模板'],content:v.prompt||''};
+    }).filter(a=>a.content);
+    return contents.concat(flows, connections, plugins, agents);
   }
   const visibleReviews = () => S.state.role === 'admin' ? S.state.reviews : S.state.reviews.filter(review => review.author === '我');
   const reviewBadge = status => S.badge(({ pending: '待审核', approved: '已通过', rejected: '已退回' })[status] || '草稿', ({ pending: 'warning', approved: 'success', rejected: 'danger' })[status] || 'neutral');
@@ -179,17 +195,17 @@
   function publishForm(asset) {
     if (!asset) return;
     if (S.state.reviews.some(r => r.assetId === asset.id && r.version === asset.version && ['pending', 'approved'].includes(r.status))) return S.toast('当前版本已经提交，无需重复提交。', 'info');
-    S.modal({ title: '提交公开审核', subtitle: `公开作品：${asset.name}`, body: `<form id="eco-publish-form" novalidate><div class="notice"><strong>通过审核后，所有社区用户都能发现并安装这份作品。</strong><p>提交的是当前版本快照；个人空间中的后续修改不会自动公开。</p></div>${field('公开说明', 'eco-public-description', asset.description, '说清楚用途、适用范围与使用方式，至少 12 个字符。', true, true)}<label class="eco-check-field"><input type="checkbox" id="eco-publish-consent" name="eco-publish-consent"><span>我已检查内容，确认不含私人资料、密钥或未经授权的内容。</span></label><p id="eco-publish-consent-error" class="field-error"></p></form>`, footer: `${S.btn('取消', 'eco-close', { variant: 'secondary' })}${S.btn('提交审核', 'eco-publish-confirm', { icon: 'send', attrs: attr(asset.id) + ' data-version="' + E(asset.version || '1.0.0') + '"' })}` });
+    S.modal({ title: '提交公开审核', subtitle: `公开作品：${asset.name}`, body: `<form id="eco-publish-form" novalidate><div class="notice"><strong>通过审核后，当前原型市场可发现并安装该版本；正式公共仓库面向所有获授权的用户。</strong><p>提交的是当前版本快照；个人空间中的后续修改不会自动公开。</p></div>${field('公开说明', 'eco-public-description', asset.description, '说清楚用途、适用范围与使用方式，至少 12 个字符。', true, true)}<label class="eco-check-field"><input type="checkbox" id="eco-publish-consent" name="eco-publish-consent"><span>我已检查内容，确认不含私人资料、密钥或未经授权的内容。</span></label><p id="eco-publish-consent-error" class="field-error"></p></form>`, footer: `${S.btn('取消', 'eco-close', { variant: 'secondary' })}${S.btn('提交审核', 'eco-publish-confirm', { icon: 'send', attrs: attr(asset.id) + ' data-version="' + E(asset.version || '1.0.0') + '"' })}` });
   }
   S.action('eco-publish', el => publishForm(getAsset(el.dataset.id, el.dataset.version)));
   S.action('eco-publish-choose', () => {
     const assets = shareable();
-    if (!assets.length) return S.modal({ title: '先创建一份模板', body: S.empty('暂时没有可提交的作品', 'Skill、MCP、提示词和工作流可以提交到公共市场。', S.btn('创建内容', 'eco-asset-create', { icon: 'plus' })), footer: S.btn('关闭', 'eco-close', { variant: 'secondary' }) });
+    if (!assets.length) return S.modal({ title: '先创建一份模板', body: S.empty('暂时没有可提交的作品', 'Agent、工作流、插件、Skill、MCP 和提示词可以提交到公共市场。', S.btn('创建内容', 'eco-asset-create', { icon: 'plus' })), footer: S.btn('关闭', 'eco-close', { variant: 'secondary' }) });
     S.modal({ title: '选择要分享的作品', subtitle: '个人知识库、记忆与文件不参与公共发布。', body: `<div class="field"><label class="field-label" for="eco-publish-asset">选择模板</label><select class="select" id="eco-publish-asset">${assets.map(a => `<option value="${E(a.id)}">${E(a.name)} · ${meta(a.type).label} · v${E(a.version || '1.0.0')}</option>`).join('')}</select></div><p class="notice small">提交后进入管理员审核，审核通过前不会出现在社区市场。</p>`, footer: `${S.btn('取消', 'eco-close', { variant: 'secondary' })}${S.btn('继续', 'eco-publish-next', { icon: 'arrow' })}` });
   });
   S.action('eco-publish-next', () => publishForm(getAsset(document.querySelector('#eco-publish-asset')?.value)));
   S.action('eco-publish-confirm', el => {
-    const a = getAsset(el.dataset.id, el.dataset.version); const form = document.querySelector('#eco-publish-form'); if (!a || !form || el.disabled) return;
+    const a = getAsset(el.dataset.id, el.dataset.version); const form = document.querySelector('#eco-publish-form'); if (!a) return S.toast('作品版本已变化，请重新选择当前版本。','warning'); if (!form || el.disabled) return;
     const valid = S.validate(form, { 'eco-public-description': value => value.trim().length < 12 ? '请补充至少 12 个字符的用途与使用说明。' : secretError(value) });
     const consent = form.querySelector('#eco-publish-consent');
     const error = form.querySelector('#eco-publish-consent-error');
@@ -199,7 +215,7 @@
     if (S.state.reviews.some(r => r.assetId === a.id && r.version === a.version && ['pending', 'approved'].includes(r.status))) return S.toast('当前版本已经提交。', 'info');
     el.disabled = true;
     S.state.reviews.unshift({ id: S.uid('review'), assetId: a.id, name: a.name, type: a.type, workflowSnapshot: a.workflowSnapshot ? JSON.parse(JSON.stringify(a.workflowSnapshot)) : undefined, configTemplate: a.configTemplate ? JSON.parse(JSON.stringify(a.configTemplate)) : undefined, transport: a.transport, location: a.location, author: '我', status: 'pending', description: form.querySelector('#eco-public-description').value.trim(), content: a.content, endpoint: a.endpoint, tags: a.tags, version: a.version || '1.0.0', reason: '', created: stamp() });
-    S.save(); S.closeModal(); ui.reviewStatus = 'pending'; S.go('review'); S.render(); S.toast('作品已提交，等待管理员审核');
+    if(S.save()===false){S.state.reviews.shift();el.disabled=false;return S.toast('审核记录未保存，请检查浏览器存储。','warning');} S.closeModal(); ui.reviewStatus = 'pending'; S.go('review'); S.render(); S.toast('作品已提交，等待管理员审核');
   });
   function reviewResults() {
     const q = ui.reviewQuery.trim().toLowerCase();
@@ -222,7 +238,7 @@
     const r = S.state.reviews.find(r => r.id === el.dataset.id);
     if (S.state.role !== 'admin') return S.toast('只有演示管理员可以审核作品。', 'warning');
     if (!r || r.status !== 'pending') return S.toast('这份提交已经处理，无需重复审核。', 'info');
-    r.status = 'approved'; r.reason = ''; r.reviewedAt = stamp(); S.save(); S.closeModal(); S.render(); S.toast(`“${r.name}”已通过审核，并在市场公开`);
+    const previous={...r};r.status = 'approved'; r.reason = ''; r.reviewedAt = stamp(); if(S.save()===false){Object.assign(r,previous);return S.toast('审核结果未保存','warning');} S.closeModal(); S.render(); S.toast(`“${r.name}”已通过审核，并在市场公开`);
   });
   S.action('eco-review-reject', el => {
     const r = S.state.reviews.find(r => r.id === el.dataset.id);
@@ -235,5 +251,6 @@
     if (!form || !S.validate(form, { 'eco-reject-reason': value => value.trim().length < 8 ? '请填写至少 8 个字符的具体修改建议。' : secretError(value) })) return;
     r.status = 'rejected'; r.reason = form.querySelector('#eco-reject-reason').value.trim(); r.reviewedAt = stamp(); S.save(); S.closeModal(); S.render(); S.toast('作品已退回，修改原因已保存');
   });
+  S.Ecosystem={shareable,getAsset,allResources,publicPluginManifest};
   S.action('eco-review-market', el => { S.closeModal(); ui.marketType = 'all'; ui.marketQuery = S.state.reviews.find(r => r.id === el.dataset.id)?.name || ''; S.go('market'); S.render(); });
 })();
