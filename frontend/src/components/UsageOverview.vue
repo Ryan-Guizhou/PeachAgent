@@ -34,7 +34,7 @@ onBeforeUnmount(()=>{generation++})
 </script>
 
 <template>
-  <section class="panel" aria-labelledby="budget-overview-title">
+  <section class="panel" aria-labelledby="budget-overview-title" :aria-busy="loading?'true':'false'">
     <h2 id="budget-overview-title">{{tr('当前周期预算占用','Current period budget usage')}}</h2>
     <p v-if="loading" role="status">{{tr('加载中','Loading')}}</p>
     <p v-if="error" class="error" role="alert">{{error}}</p>
@@ -55,7 +55,7 @@ onBeforeUnmount(()=>{generation++})
     </div>
     <p class="muted">{{tr('未知消耗仍保留；存在不确定调用时不宣称可用 Token 或金额额度。','Uncertain consumption is retained; token and cost availability is not asserted when calls are uncertain.')}}</p>
   </section>
-  <section class="panel" aria-labelledby="usage-summary-title">
+  <section class="panel" aria-labelledby="usage-summary-title" :aria-busy="loading?'true':'false'">
     <h2 id="usage-summary-title">{{tr('近 30 天真实用量汇总','Last 30 days usage summary')}}</h2>
     <p class="muted">{{tr('独立于明细分页，按模型类型及用量/费用来源汇总。','Grouped by model type and usage/cost source, independent of call-detail pagination.')}}</p>
     <p v-if="!loading&&!error&&!summary.length" class="empty">{{tr('暂无已派发调用','No dispatched calls')}}</p>

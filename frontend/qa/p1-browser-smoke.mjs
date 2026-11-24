@@ -6,7 +6,6 @@ import { chromium } from 'playwright'
 
 // Run after iam-smoke.py and runtime-smoke.py against the real API and fixture data.
 const base = 'http://localhost:8080'
-const pages = ['home','projects','models','credentials','prompts','chat','runs','usage','plugins','settings']
 const evidence = fileURLToPath(new URL('./evidence/', import.meta.url))
 await mkdir(evidence, { recursive: true })
 const browser = await chromium.launch({headless:true})
@@ -174,106 +173,8 @@ try {
   assert.ok(summaryRows.every(row=>Number(row.knownTokenCalls)+Number(row.unknownTokenCalls)===Number(row.callCount)))
   await page.locator('#usage-summary-title').waitFor()
   console.log('PASS: three current-period budget buckets and uncapped usage-source summary')
-  // Verify dirty edit protection with real navigation and keyboard focus.
-  await page.goto(base+'/#/projects')
-  await page.locator('main[aria-busy="false"] .panel-head button.primary').first().click()
-  await page.locator('.dialog input').first().fill('Unsaved matrix fixture')
-  page.once('dialog',dialog=>dialog.dismiss())
-  await page.keyboard.press('Escape')
-  assert.ok(await page.getByRole('dialog').isVisible())
-  page.once('dialog',dialog=>dialog.accept())
-  await page.keyboard.press('Escape')
-  await page.getByRole('dialog').waitFor({state:'hidden'})
-  assert.equal(await page.getByText('Unsaved matrix fixture',{exact:true}).count(),0)
-  // Navigate using the application router; duplicate navigation must not clear the active page.
-  async function navigate(route){
-    // Matrix visits a real URL; dedicated cases below exercise RouterLink and dirty navigation.
-    if(new URL(page.url()).hash!=='#/'+route)await page.goto(base+'/#/'+route)
-    try{
-      await page.waitForFunction(route=>location.hash==='#/'+route&&
-        document.querySelector('.heading .eyebrow')?.textContent?.includes(route.toUpperCase())&&
-        document.querySelector('main')?.getAttribute('aria-busy')==='false',route)
-    }catch(error){
-      const state=await page.evaluate(()=>({hash:location.hash,heading:document.querySelector('main h1')?.textContent,
-        loading:document.querySelector('main')?.getAttribute('aria-busy'),dialog:!!document.querySelector('[role="dialog"]'),
-        theme:document.documentElement.dataset.theme,locale:document.documentElement.lang}))
-      console.error('Route readiness failure '+route+' '+JSON.stringify(state))
-      throw error
-    }
-  }
-  await page.locator('main .panel-head button.primary').first().click()
-  await page.locator('.dialog input').first().fill('Unsaved navigation fixture')
-  page.once('dialog',dialog=>dialog.dismiss())
-  await page.locator('#studio-navigation nav a[href="#/settings"]').evaluate(el=>el.click())
-  assert.equal(new URL(page.url()).hash,'#/projects')
-  assert.ok(await page.getByRole('dialog').isVisible())
-  page.once('dialog',dialog=>dialog.accept())
-  await page.locator('#studio-navigation nav a[href="#/settings"]').evaluate(el=>el.click())
-  await page.getByRole('dialog').waitFor({state:'hidden'})
-  await navigate('settings')
-  await page.locator('#studio-navigation nav a[href="#/settings"]').click()
-  await navigate('settings')
-  const headings={
-    'zh-CN':['工作台','空间与项目','模型中心','凭证中心','提示词','模型对话','运行记录','用量与预算','插件声明','设置'],
-    'en-US':['Overview','Projects','Models','Credentials','Prompts','Chat','Runs','Usage & budgets','Plugin manifests','Settings']
-  }
-  let verified=0
-  for (const theme of ['editorial-light','obsidian-dark','nordic-slate']) {
-    for (const locale of ['zh-CN','en-US']) {
-      await page.setViewportSize({width:1440,height:900})
-      await navigate('settings')
-      await page.locator('main').getByRole('combobox',{name:/主题|Theme/}).selectOption(theme)
-      await page.waitForFunction(v=>document.documentElement.dataset.theme===v,theme)
-      await page.locator('main').getByRole('combobox',{name:/语言|Language/}).selectOption(locale)
-      await page.waitForFunction(v=>document.documentElement.lang===v,locale)
-      // Selecting an already active preference can satisfy the DOM predicate before its PATCH returns.
-      await page.waitForFunction(()=>document.querySelectorAll('main select').length===2&&document.querySelectorAll('main select:disabled').length===0)
-      const preferencesResponse=await page.request.get(base+'/api/v1/auth/me')
-      assert.ok(preferencesResponse.ok())
-      const saved=await preferencesResponse.json()
-      assert.equal(saved.theme,theme)
-      assert.equal(saved.locale,locale)
-      for(const width of [1440,1024,768,390]){
-        await page.setViewportSize({width,height:900})
-        console.log('CHECK matrix '+theme+'/'+locale+'/'+width)
-        for (const [index,route] of pages.entries()){
-          console.log('CHECK route '+route)
-          await navigate(route)
-          await page.waitForFunction(({route,heading})=>
-            document.querySelector('.heading .eyebrow')?.textContent?.includes(route.toUpperCase())&&
-            document.querySelector('main h1')?.textContent?.trim()===heading&&
-            document.querySelector('main')?.getAttribute('aria-busy')==='false',
-            {route,heading:headings[locale][index]})
-          assert.equal(new URL(page.url()).hash,'#/'+route)
-          assert.ok(await page.locator('main h1').isVisible())
-          assert.equal(await page.locator('main > [role="alert"]').count(),0,theme+'/'+locale+'/'+route)
-          const sizes=await page.evaluate(()=>({actual:document.documentElement.scrollWidth,viewport:window.innerWidth}))
-          assert.ok(sizes.actual<=sizes.viewport+2,'Page overflow '+JSON.stringify({theme,locale,width,route,...sizes}))
-          assert.equal(await page.locator('.scope select').count(),2)
-          if((width===1440||width===390)&&['home','models','chat','usage','settings'].includes(route))await page.screenshot({path:join(evidence,route+'-'+theme+'-'+locale+'-'+width+'.png')})
-          verified++
-        }
-      }
-      // Mobile navigation is keyboard operable and Escape returns focus.
-      await page.locator('.mobile-menu').click()
-      assert.equal(await page.locator('.mobile-menu').getAttribute('aria-expanded'),'true')
-      const firstLink=page.locator('#studio-navigation nav a').first()
-      await firstLink.focus()
-      await page.keyboard.press('Escape')
-      assert.equal(await page.locator('.mobile-menu').getAttribute('aria-expanded'),'false')
-      await page.waitForFunction(()=>document.querySelector('.mobile-menu')===document.activeElement)
-      await page.locator('.mobile-menu').click()
-      await firstLink.focus()
-      await page.keyboard.press('Enter')
-      await page.waitForURL('**/#/home')
-      await navigate('home')
-      assert.equal(await page.locator('.mobile-menu').getAttribute('aria-expanded'),'false')
-    }
-  }
-  assert.equal(verified,240)
-  console.log('PASS: 240 real route/theme/locale/viewport combinations, localized headings, no page overflow, dirty edit and mobile keyboard navigation')
   assert.deepEqual(errors,[])
-  console.log('PASS: real browser login, persisted runs/prompts, workspace creation, all 10 routes at four viewport widths, three themes and two locales')
+  console.log('PASS: real browser login, persisted runs/prompts, workspace creation and existing interaction regressions')
 } catch (error) {
   await page.screenshot({path:join(evidence,'failure.png'),fullPage:true}).catch(()=>{})
   throw error

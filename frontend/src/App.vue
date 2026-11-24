@@ -309,7 +309,13 @@ async function retry(id:string){
 }
 function onUnload(event:BeforeUnloadEvent){if(dirty.value){event.preventDefault();event.returnValue=''}}
 onMounted(async()=>{
- const removeGuard=router.beforeEach((to,from)=>to.fullPath===from.fullPath||canLeave())
+ const removeGuard=router.beforeEach((to,from)=>{
+   if(to.fullPath===from.fullPath||!dirty.value)return true
+   if(!canLeave())return false
+   // 已确认丢弃时立即清除脏标记，避免浏览器 history/hash 后续事件再次阻止已批准的导航。
+   clearEdit()
+   return true
+ })
  const removeAfter=router.afterEach((to,from,failure)=>{
    // 只有实际完成的路由切换才清空旧页面；重复导航、取消导航不能留下 loading 状态。
    if(failure||to.fullPath===from.fullPath)return

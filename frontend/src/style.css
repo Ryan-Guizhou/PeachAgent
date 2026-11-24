@@ -58,3 +58,8 @@
 /* 中等视口允许顶部作用域换行，长名称只在自己的控件内截断。 */
 .breadcrumb{min-width:0;overflow:hidden;text-overflow:ellipsis}.scope{min-width:0}.scope select{min-width:0;overflow:hidden;text-overflow:ellipsis}
 @media(min-width:761px) and (max-width:1000px){.topbar{gap:10px;flex-wrap:wrap}.scope{order:3;flex-basis:100%;max-width:100%}.scope select{max-width:none}}
+
+/* 全页面不隐藏溢出：内容列、聊天列与表格容器各自收缩，移动端的作用域独占一行。 */
+.shell>div,.chat-layout>*,.panel,.metrics article{min-width:0}
+.status{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+@media(max-width:760px){.scope{flex-basis:100%;min-width:0;max-width:100%}.scope select{flex:1 1 0;max-width:100%;min-width:0}.breadcrumb{white-space:normal;overflow-wrap:anywhere}}
