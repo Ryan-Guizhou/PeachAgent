@@ -1,4 +1,4 @@
-import { nextTick, ref, watch, type Ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
 
 /** 对话框的焦点进入、循环和关闭后恢复。 */
 export function useDialogFocus(open:Ref<string>, onClose:()=>void){
@@ -22,13 +22,25 @@ export function useDialogFocus(open:Ref<string>, onClose:()=>void){
     }
   },{flush:'post'})
   function handleDialogKey(event:KeyboardEvent){
-    if(event.key==='Escape'){event.preventDefault();onClose();return}
+    // 异步请求禁用已聚焦的提交按钮时，浏览器可能将焦点退回 body。
+    // 在文档捕获阶段处理键盘事件，避免 Escape 和 Tab 脱离当前模态框。
+    if(!open.value||!dialogRef.value)return
+    if(event.key==='Escape'){
+      event.preventDefault();event.stopPropagation();onClose();return
+    }
     if(event.key!=='Tab')return
     const items=controls()
-    if(!items.length){event.preventDefault();dialogRef.value?.focus();return}
+    if(!items.length){
+      event.preventDefault();event.stopPropagation();dialogRef.value.focus();return
+    }
     const first=items[0],last=items[items.length-1]
-    if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}
-    else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}
+    const active=document.activeElement
+    const outside=!active||!dialogRef.value.contains(active)||active===dialogRef.value
+    if(outside||(event.shiftKey&&active===first)||(!event.shiftKey&&active===last)){
+      event.preventDefault();event.stopPropagation();(event.shiftKey?last:first).focus()
+    }
   }
-  return {dialogRef,rememberFocus,handleDialogKey}
+  onMounted(()=>document.addEventListener('keydown',handleDialogKey,true))
+  onBeforeUnmount(()=>document.removeEventListener('keydown',handleDialogKey,true))
+  return {dialogRef,rememberFocus}
 }

@@ -68,6 +68,11 @@ try {
   await dialog.getByRole('textbox',{name:/变量值 JSON|Variable values JSON/}).fill('{"name":"Browser QA"}')
   await dialog.getByRole('button',{name:/渲染预览|Render preview/}).click()
   await dialog.getByText('Say hello to Browser QA',{exact:true}).waitFor()
+  // A disabled submit control may move focus outside the modal during an asynchronous request.
+  await page.evaluate(()=>{if(document.activeElement instanceof HTMLElement)document.activeElement.blur()})
+  await page.keyboard.press('Tab')
+  assert.ok(await dialog.evaluate(el=>el.contains(document.activeElement)))
+  await page.evaluate(()=>{if(document.activeElement instanceof HTMLElement)document.activeElement.blur()})
   await page.keyboard.press('Escape')
   await dialog.waitFor({state:'hidden'})
   assert.ok(await promptRow.getByRole('button',{name:/预览草稿|Preview draft/}).evaluate(el=>document.activeElement===el))
