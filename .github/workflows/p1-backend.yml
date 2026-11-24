@@ -22,7 +22,7 @@ jobs:
           cache-dependency-path: backend/**/pom.xml
       - name: Compile and unit tests
         run: mvn -B -f backend/pom.xml verify
-      - name: Start real database and Redis
+      - name: Start real database, Redis and SMTP
         env:
           MYSQL_ROOT_PASSWORD: ci-only-root
           DB_USER: peachagent

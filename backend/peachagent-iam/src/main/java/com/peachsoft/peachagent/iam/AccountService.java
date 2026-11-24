@@ -15,6 +15,8 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /** 账号创建、一次性邮箱验证、密码恢复和真实登录。 */
 @Service
@@ -91,15 +93,27 @@ public class AccountService {
         String currency=input.currency()==null?"USD":input.currency();
         if (!List.of("USD","CNY").contains(currency)) throw new DomainException("INVALID_CURRENCY",422,"Invalid currency");
         consume(key,"REGISTER",input.token(),null);
+        createVerifiedAccount(key,input.password(),input.displayName().strip(),currency,"USER");
+    }
+
+    @Transactional
+    public void provisionAdmin(String address,String password) {
+        String key=email(address);validatePassword(password);
+        Integer count=jdbc.queryForObject("SELECT COUNT(*) FROM IAM_USER WHERE PLATFORM_ROLE = 'ADMIN'",Integer.class);
+        if(count!=null&&count>0)throw new DomainException("ADMIN_EXISTS",409,"Administrator already provisioned");
+        createVerifiedAccount(key,password,"Administrator","USD","ADMIN");
+    }
+
+    private void createVerifiedAccount(String key,String password,String displayName,String currency,String role) {
         String user=ids.nextId(),tenant=ids.nextId(),now=time.now();
         jdbc.update("""
                 INSERT INTO IAM_USER (ID,EMAIL,EMAIL_KEY,PASSWORD_HASH,DISPLAY_NAME,PLATFORM_ROLE,STATUS,EMAIL_VERIFIED_AT,AUTH_EPOCH,LOCALE,THEME,CREATED_AT,CREATED_BY,UPDATED_AT,UPDATED_BY)
-                VALUES (?,?,?,?,?,'USER','ACTIVE',?,0,'zh-CN','editorial-light',?,?,?,?)
-                """,user,key,key,passwords.encode(input.password()),input.displayName().strip(),now,now,user,now,user);
+                VALUES (?,?,?,?,?,?,'ACTIVE',?,0,'zh-CN','editorial-light',?,?,?,?)
+                """,user,key,key,passwords.encode(password),displayName,role,now,now,user,now,user);
         jdbc.update("""
                 INSERT INTO IAM_TENANT (ID,OWNER_USER_ID,TENANT_CODE,NAME,STATUS,CURRENCY,CREATED_AT,CREATED_BY,UPDATED_AT,UPDATED_BY)
                 VALUES (?,?,?,?,'ACTIVE',?,?,?,?,?)
-                """,tenant,user,"T-"+tenant,input.displayName().strip(),currency,now,user,now,user);
+                """,tenant,user,"T-"+tenant,displayName,currency,now,user,now,user);
         workspaces.initializeBudget(tenant,null,null,"TENANT",tenant,currency,8,user,now);
         String workspace=workspaces.initializeWorkspace(user,tenant,currency,"默认工作空间",null);
         jdbc.update("UPDATE IAM_TENANT SET DEFAULT_WORKSPACE_ID = ? WHERE ID = ?",workspace,tenant);
@@ -145,7 +159,10 @@ public class AccountService {
         jdbc.update("UPDATE IAM_EMAIL_CHALLENGE SET CONSUMED_AT = ? WHERE USER_ID = ? AND PURPOSE = 'RESET' AND CONSUMED_AT IS NULL",time.now(),user);
         var p=identity.active(user);
         audit.record(p.tenantId(),null,null,user,"PASSWORD_RESET","USER",user,"SUCCESS",null);
-        // 所有既有 Session 在下一次授权检查时因 auth_epoch 不匹配被拒绝。
+        // DB epoch 是权威撤权，事务提交后尽力清理 Redis 中全部既有会话。
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCommit() { StpUtil.logout(user); }
+        });
     }
 
     private void consume(String key,String purpose,String token,String user) {
