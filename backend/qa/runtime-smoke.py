@@ -25,6 +25,8 @@ TERMINAL = {"SUCCEEDED", "FAILED", "CANCELLED", "INTERRUPTED"}
 REQUESTS = []
 FIXTURE_AUTH = []
 FIXTURE_MESSAGES = []
+EARLY_DELTA_RELEASE = threading.Event()
+EARLY_DELTA_TIMEOUT = threading.Event()
 audio = io.BytesIO()
 with wave.open(audio, "wb") as w:
     w.setnchannels(1)
@@ -62,6 +64,18 @@ class Provider(BaseHTTPRequestHandler):
                 self.wfile.write(first);self.wfile.flush()
                 time.sleep(1)
                 self.close_connection=True
+                return
+            if obj.get("messages",[])[-1]["content"]=="early-stream-proof":
+                first=b'data: {"choices":[{"delta":{"content":"Early visible fragment"}}]}\n\n'
+                tail=b'data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}\n\ndata: [DONE]\n\n'
+                self.send_response(200)
+                self.send_header("Content-Type","text/event-stream")
+                self.send_header("Content-Length",str(len(first)+len(tail)))
+                self.end_headers()
+                self.wfile.write(first);self.wfile.flush()
+                if not EARLY_DELTA_RELEASE.wait(8):
+                    EARLY_DELTA_TIMEOUT.set()
+                self.wfile.write(tail);self.wfile.flush()
                 return
             if obj.get("model") == "reject":
                 self.send_error(429)
@@ -178,6 +192,31 @@ try:
             assert c.call("GET",p+"/runs/"+run["id"]+"/artifacts/"+artifact,raw=True)
             other.call("GET",p+"/runs/"+run["id"]+"/artifacts/"+artifact,expected=404)
         models[protocol["key"]]=m
+    # The upstream holds its final bytes until the downstream client observes the first delta.
+    early_model=models["openai.chat-completions"]
+    early=c.call("POST",p+"/models/"+early_model["id"]+"/debug",
+                 {"input":{"text":"early-stream-proof"},"audioBase64":None,"maxOutputTokens":32},key=key())
+    early_request=urllib.request.Request(BASE+"/api/v1"+p+"/runs/"+early["id"]+"/events",
+                     headers={"Origin":ORIGIN,"Accept":"text/event-stream"})
+    seen=False
+    try:
+        with c.opener.open(early_request,timeout=15) as response:
+            pending=b""
+            while chunk:=response.read1(4096):
+                pending+=chunk
+                while b"\n" in pending:
+                    line,pending=pending.split(b"\n",1)
+                    if line.startswith(b"data: "):
+                        event=json.loads(line[6:])
+                        if event["eventType"]=="delta":
+                            assert not EARLY_DELTA_TIMEOUT.is_set(),"First delta buffered until upstream terminal"
+                            assert event["payload"]["text"]=="Early visible fragment"
+                            seen=True;EARLY_DELTA_RELEASE.set()
+    finally:
+        EARLY_DELTA_RELEASE.set()
+    assert seen
+    wait(c,p,early)
+    print("PASS: downstream first delta received before upstream final bytes are released")
     prompt=c.call("POST",p+"/prompts",{"name":"Fixture prompt","description":"","content":"Say hello to {{name}}",
          "variables":{"name":{"type":"string","required":True}},"rowVersion":None})
     version=c.call("POST",p+"/prompts/"+prompt["id"]+"/versions",{"changeNote":"Initial","rowVersion":prompt["rowVersion"]})
@@ -293,6 +332,28 @@ try:
     c.call("POST",target+"/conversations/"+context_conv["id"]+"/runs",oversized,key=key(),expected=422)
     assert len(REQUESTS)==before
     print("PASS: partial output persisted, exact Last-Event-ID replay, same-conversation concurrency, explicit uncertain retry and context clipping")
+    # Real API history exceeds one UI page, and the backward cursor never duplicates a turn.
+    long_chat=c.call("POST",p+"/conversations",{"title":"Long history QA"})
+    for index in range(12):
+        history_body={"modelId":model["id"],"text":f"History message {index:02d}","promptVersionId":None,"variables":{},"maxOutputTokens":32}
+        history_run=c.call("POST",p+"/conversations/"+long_chat["id"]+"/runs",history_body,key=key())
+        wait(c,p,history_run)
+    history_path=p+"/conversations/"+long_chat["id"]+"/messages"
+    tail=c.call("GET",history_path+"?latest=true&limit=20")
+    assert [row["seq"] for row in tail]==list(range(5,25)),tail
+    older=c.call("GET",history_path+"?before="+str(tail[0]["seq"])+"&limit=20")
+    assert [row["seq"] for row in older]==list(range(1,5)),older
+    assert c.call("GET",history_path+"?after=0&limit=4")==older
+    assert c.call("GET",history_path+"?before=1&limit=20")==[]
+    c.call("GET",history_path+"?before=5&after=1",expected=422)
+    other.call("GET",history_path+"?latest=true",expected=404)
+    answer=older[1]
+    feedback_path=p+"/conversations/"+long_chat["id"]+"/messages/"+answer["id"]+"/feedback"
+    c.call("POST",feedback_path,{"rating":"UP","reason":None})
+    assert c.call("GET",history_path+"?before=5")[1]["feedbackRating"]=="UP"
+    c.call("POST",feedback_path,{"rating":"DOWN","reason":None})
+    assert c.call("GET",history_path+"?before=5")[1]["feedbackRating"]=="DOWN"
+    print("PASS: real long history tail, strict backward cursor, legacy forward paging, cross-tenant denial and feedback update")
     # A retry creates a new persisted run; same key cannot start another call.
     before=len(REQUESTS)
     retry_key=key()

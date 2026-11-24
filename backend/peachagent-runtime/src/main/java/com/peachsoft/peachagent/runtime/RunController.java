@@ -46,14 +46,14 @@ public class RunController {
             if(!streams.tryAcquire())return;
             try{
                 long seq=cursor,end=System.nanoTime()+25_000_000_000L;
-                long heartbeat=0;
+                long heartbeat=0;boolean firstDelta=false;
                 while(System.nanoTime()<end){
                     Object logged=StpUtil.getLoginIdByToken(token);
                     if(logged==null||!scope.userId().equals(logged.toString()))break;
-                    identity.assertStreamScope(scope,principal.authEpoch());
-                    var page=runs.eventPage(scope,id,seq);
+                    var page=runs.eventPage(scope,id,seq,principal.authEpoch());
                     for(var event:page.events()){
                         seq=((Number)event.get("seq")).longValue();
+                        if("delta".equals(event.get("eventType")))firstDelta=true;
                         String data="id: "+seq+"\nevent: "+event.get("eventType")+"\ndata: "+mapper.writeValueAsString(event)+"\n\n";
                         out.write(data.getBytes(StandardCharsets.UTF_8));out.flush();
                     }
@@ -62,7 +62,7 @@ public class RunController {
                     if(page.events().isEmpty()&&System.nanoTime()-heartbeat>=2_000_000_000L){
                         out.write(": heartbeat\n\n".getBytes(StandardCharsets.UTF_8));out.flush();heartbeat=System.nanoTime();
                     }
-                    try{Thread.sleep(100);}catch(InterruptedException ex){Thread.currentThread().interrupt();break;}
+                    try{Thread.sleep(firstDelta?100:25);}catch(InterruptedException ex){Thread.currentThread().interrupt();break;}
                 }
             }catch(DomainException ex){/* 权限变更立即关闭流，客户端重新鉴权。 */}
             finally{streams.release();}

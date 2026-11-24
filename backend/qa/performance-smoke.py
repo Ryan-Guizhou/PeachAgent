@@ -87,17 +87,23 @@ class Client:
                                          headers={"Accept": "text/event-stream", "Origin": ORIGIN,
                                                   "Last-Event-ID": str(last)})
             with self.opener.open(req, timeout=45) as response:
-                for raw in response:
-                    line = raw.decode("utf-8").strip()
-                    if line.startswith("data: "):
-                        event = json.loads(line[6:])
-                        assert event["seq"] == last + 1, (run_id, "SSE sequence gap", last, event["seq"])
-                        last = event["seq"]
-                        types.append(event["eventType"])
-                        if event["eventType"] == "delta" and first is None:
-                            first = time.monotonic()
-                        if event["eventType"] == "terminal":
-                            terminal = True
+                pending = b""
+                # Consume available transport bytes, without waiting for a full buffer or EOF.
+                while chunk := response.read1(4096):
+                    received = time.monotonic()
+                    pending += chunk
+                    assert len(pending) <= 2 * 1024 * 1024, "Unbounded SSE frame"
+                    while b"\n" in pending:
+                        raw, pending = pending.split(b"\n", 1)
+                        if raw.startswith(b"data: "):
+                            event = json.loads(raw[6:])
+                            assert event["seq"] == last + 1, (run_id, "SSE sequence gap", last, event["seq"])
+                            last = event["seq"]
+                            types.append(event["eventType"])
+                            if event["eventType"] == "delta" and first is None:
+                                first = received
+                            if event["eventType"] == "terminal":
+                                terminal = True
             if not terminal:
                 reconnects += 1
                 time.sleep(.05)
@@ -235,6 +241,8 @@ class Fixture(BaseHTTPRequestHandler):
             self.wfile.flush()
             # Hold the stream long enough to exercise 32 simultaneous model executions.
             time.sleep(2)
+            with LOCK:
+                entry["tail"] = time.monotonic()
             self.wfile.write(last)
             self.wfile.flush()
         finally:
@@ -328,7 +336,15 @@ def submit(scope, client):
         observed = REQUESTS[marker]
         assert observed["count"] == 1, "Provider replay"
         delay = observed["first"] - observed["arrived"]
-    return marker, run["id"], created, max(0., (first - start - delay) * 1000), reconnects
+        admission_to_provider = (observed["arrived"] - start) * 1000
+        provider_to_client = (first - observed["first"]) * 1000
+        before_tail = first < observed["tail"]
+    return marker, run["id"], created, max(0., (first - start - delay) * 1000), reconnects, {
+        "admissionToProviderMs": admission_to_provider,
+        "providerFirstMs": delay * 1000,
+        "providerToClientMs": provider_to_client,
+        "beforeTail": before_tail,
+    }
 
 
 def create_benchmark(scopes):
@@ -437,7 +453,11 @@ def main():
         soaked, elapsed = soak_benchmark(scopes)
         report["soak"] = {"durationSeconds": round(elapsed, 3), "samples": len(soaked), "peaks": dict(PEAKS),
                           "platformFirstEventP95Ms": p95([row[3] for row in soaked]),
-                          "sseReconnects": sum(row[4] for row in soaked)}
+                          "sseReconnects": sum(row[4] for row in soaked),
+                          "admissionToProviderP95Ms": p95([row[5]["admissionToProviderMs"] for row in soaked]),
+                          "providerFirstP95Ms": p95([row[5]["providerFirstMs"] for row in soaked]),
+                          "providerToClientP95Ms": p95([row[5]["providerToClientMs"] for row in soaked]),
+                          "firstBeforeUpstreamTail": sum(row[5]["beforeTail"] for row in soaked)}
         report["reconciliation"] = reconcile(created + soaked)
         thresholds = {
             "runRead": report["read"]["runP95Ms"] <= 200,

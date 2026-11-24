@@ -95,20 +95,6 @@ public class IdentityService {
         else project(p, scope.workspaceId(), scope.projectId(), false);
     }
 
-    /** SSE 逐轮查询账号、认证纪元及完整资源状态，避免重复读取用户资料。 */
-    public void assertStreamScope(ScopeContext scope,long authEpoch){
-        Integer valid=jdbc.queryForObject("""
-                SELECT COUNT(*) FROM IAM_USER U
-                JOIN IAM_TENANT T ON T.OWNER_USER_ID = U.ID
-                JOIN IAM_WORKSPACE W ON W.TENANT_ID = T.ID
-                JOIN IAM_PROJECT P ON P.TENANT_ID = T.ID AND P.WORKSPACE_ID = W.ID
-                WHERE U.ID = ? AND U.AUTH_EPOCH = ? AND U.STATUS = 'ACTIVE'
-                  AND T.ID = ? AND T.STATUS = 'ACTIVE' AND W.ID = ? AND W.STATUS = 'ACTIVE'
-                  AND P.ID = ? AND P.STATUS = 'ACTIVE'
-                """,Integer.class,scope.userId(),authEpoch,scope.tenantId(),scope.workspaceId(),scope.requireProject());
-        if(!Integer.valueOf(1).equals(valid))throw missing();
-    }
-
     public static DomainException missing() {
         return new DomainException("NOT_FOUND", 404, "Resource not found");
     }

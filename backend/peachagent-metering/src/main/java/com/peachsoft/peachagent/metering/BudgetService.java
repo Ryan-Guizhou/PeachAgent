@@ -15,6 +15,7 @@ import java.util.Map;
 import java.util.LinkedHashMap;
 import java.util.ArrayList;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.json.JsonMapper;
@@ -262,6 +263,7 @@ public class BudgetService {
             args.add(cursor.time());
         }
         args.add(Math.max(1,Math.min(100,limit)));
-        return JsonData.viewRows(mapper,jdbc.queryForList(sql+" ORDER BY CREATED_AT DESC,ID DESC LIMIT ?",args.toArray()));
+        ResultSetExtractor<List<Map<String,Object>>> projection=JsonData::readRows;
+        return jdbc.query(sql+" ORDER BY CREATED_AT DESC,ID DESC LIMIT ?",projection,args.toArray());
     }
 }

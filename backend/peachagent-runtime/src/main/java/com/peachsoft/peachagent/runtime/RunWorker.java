@@ -35,7 +35,7 @@ public class RunWorker {
     private final Semaphore capacity=new Semaphore(32);
     private final AtomicBoolean stopping=new AtomicBoolean();
     public RunWorker(RunService runs,ModelService models,ArtifactStore artifacts,IdGenerator ids){this.runs=runs;this.models=models;this.artifacts=artifacts;this.owner=ids.nextId();}
-    @Scheduled(fixedDelay=100)
+    @Scheduled(fixedDelay=40)
     public void poll(){
         if(stopping.get())return;
         while(!stopping.get() && capacity.tryAcquire()){
@@ -84,7 +84,7 @@ public class RunWorker {
             var active=context;
             pulse=timers.scheduleAtFixedRate(()->{
                 try{if(!runs.heartbeat(c))active.cancel();}catch(Exception ex){active.cancel();}
-            },0,1,TimeUnit.SECONDS);
+            },1,1,TimeUnit.SECONDS);
             byte[] audio=p.inputArtifactId()==null?null:artifacts.read(c.scope(),c.id(),p.inputArtifactId()).bytes();
             // 在实际派发前重新检查版本、凭证与租约；不以旧快照绕过撤权。
             var latest=models.prepare(c.scope(),p.model());

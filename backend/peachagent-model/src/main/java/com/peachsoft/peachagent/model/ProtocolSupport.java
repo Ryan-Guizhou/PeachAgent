@@ -1,9 +1,7 @@
 package com.peachsoft.peachagent.model;
 
 import com.peachsoft.peachagent.common.DomainException;
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
+import com.peachsoft.peachagent.model.stream.SseFrameReader;
 import java.util.Map;
 import java.util.Set;
 import tools.jackson.databind.JsonNode;
@@ -46,31 +44,9 @@ final class ProtocolSupport {
     interface EventConsumer {void accept(String event,JsonNode json);}
     static boolean sse(ControlledTransport.Response response,JsonMapper mapper,EventConsumer consumer)throws Exception{
         if(response.contentType()==null||!response.contentType().contains("text/event-stream"))throw invalidResponse();
-        boolean done=false;
-        try(var reader=new BufferedReader(new InputStreamReader(response.stream(16L*1024*1024),StandardCharsets.UTF_8))){
-            String line,event="";StringBuilder data=new StringBuilder();
-            while((line=reader.readLine())!=null){
-                if(line.length()>1024*1024)throw invalidResponse();
-                if(line.isEmpty()){
-                    if(!data.isEmpty()){
-                        String value=data.toString();
-                        if("[DONE]".equals(value)){done=true;break;}
-                        consumer.accept(event,mapper.readTree(value));data.setLength(0);
-                    }
-                    event="";
-                }else if(line.startsWith("event:"))event=line.substring(6).strip();
-                else if(line.startsWith("data:")){
-                    if(!data.isEmpty())data.append('\n');
-                    data.append(line.substring(5).stripLeading());
-                    if(data.length()>1024*1024)throw invalidResponse();
-                }
-            }
-            if(!data.isEmpty()&&!done){
-                if("[DONE]".equals(data.toString()))done=true;
-                else consumer.accept(event,mapper.readTree(data.toString()));
-            }
+        try(var stream=response.stream(16L*1024*1024)){
+            return SseFrameReader.read(stream,(event,data)->consumer.accept(event,mapper.readTree(data)));
         }
-        return done;
     }
     static boolean wav(byte[] bytes){
         return bytes!=null&&bytes.length>=12&&bytes[0]=='R'&&bytes[1]=='I'&&bytes[2]=='F'&&bytes[3]=='F'

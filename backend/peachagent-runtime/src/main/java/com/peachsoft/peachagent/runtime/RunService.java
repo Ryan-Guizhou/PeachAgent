@@ -12,6 +12,7 @@ import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.transaction.support.TransactionCallback;
@@ -115,7 +116,8 @@ public class RunService {
             sql+=" AND CREATED_AT <= DATE_FORMAT(UTC_TIMESTAMP(), '%Y%m%d%H%i%s')";
         }
         args.add(Math.max(1,Math.min(limit,100)));
-        return JsonData.viewRows(mapper,jdbc.queryForList(sql+" ORDER BY CREATED_AT DESC,ID DESC LIMIT ?",args.toArray()));
+        ResultSetExtractor<List<Map<String,Object>>> projection=JsonData::readRows;
+        return jdbc.query(sql+" ORDER BY CREATED_AT DESC,ID DESC LIMIT ?",projection,args.toArray());
     }
     /** 同一个 Run 状态快照的事件高水位，只有全部交付后才允许关闭终态流。 */
     public record EventPage(List<Map<String,Object>> events,boolean terminal,long lastSequence) {
@@ -124,12 +126,18 @@ public class RunService {
         }
     }
 
-    public EventPage eventPage(ScopeContext s,String id,long after){
-        // 先读取同一行的状态和序号，防止终态在事件查询与结束判断之间提交导致漏发。
+    public EventPage eventPage(ScopeContext s,String id,long after,long authEpoch){
+        // 每轮同时验证认证纪元、完整资源归属及事件高水位；无跨请求权限缓存。
         var rows=jdbc.queryForList("""
-                SELECT STATUS,NEXT_EVENT_SEQ FROM RT_RUN
-                WHERE TENANT_ID = ? AND WORKSPACE_ID = ? AND PROJECT_ID = ? AND ACTOR_USER_ID = ? AND ID = ?
-                """,s.tenantId(),s.workspaceId(),s.requireProject(),s.userId(),id);
+                SELECT R.STATUS,R.NEXT_EVENT_SEQ FROM RT_RUN R
+                JOIN IAM_USER U ON U.ID = R.ACTOR_USER_ID AND U.STATUS = 'ACTIVE'
+                JOIN IAM_TENANT T ON T.ID = R.TENANT_ID AND T.OWNER_USER_ID = U.ID AND T.STATUS = 'ACTIVE'
+                JOIN IAM_WORKSPACE W ON W.TENANT_ID = T.ID AND W.ID = R.WORKSPACE_ID AND W.STATUS = 'ACTIVE'
+                JOIN IAM_PROJECT P ON P.TENANT_ID = T.ID AND P.WORKSPACE_ID = W.ID
+                    AND P.ID = R.PROJECT_ID AND P.STATUS = 'ACTIVE'
+                WHERE R.TENANT_ID = ? AND R.WORKSPACE_ID = ? AND R.PROJECT_ID = ?
+                  AND R.ACTOR_USER_ID = ? AND R.ID = ? AND U.AUTH_EPOCH = ?
+                """,s.tenantId(),s.workspaceId(),s.requireProject(),s.userId(),id,authEpoch);
         if(rows.isEmpty())throw IdentityService.missing();
         var row=rows.getFirst();
         long lastSequence=n(row,"NEXT_EVENT_SEQ")-1;

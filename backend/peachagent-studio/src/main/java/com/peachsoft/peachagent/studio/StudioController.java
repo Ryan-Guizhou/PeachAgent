@@ -42,7 +42,11 @@ public class StudioController {
     @PostMapping("/projects/{p}/conversations")
     public Map<String,Object> createConversation(@PathVariable String w,@PathVariable String p,@RequestBody ConversationService.Create c){return chat.create(identity.project(w,p),c);}
     @GetMapping("/projects/{p}/conversations/{id}/messages")
-    public List<Map<String,Object>> messages(@PathVariable String w,@PathVariable String p,@PathVariable String id,@RequestParam(defaultValue="0") long after,@RequestParam(defaultValue="100") int limit){return chat.messages(identity.project(w,p),id,after,limit);}
+    public List<Map<String,Object>> messages(@PathVariable String w,@PathVariable String p,@PathVariable String id,
+            @RequestParam(defaultValue="0") long after,@RequestParam(defaultValue="100") int limit,
+            @RequestParam(required=false) Long before,@RequestParam(defaultValue="false") boolean latest){
+        return chat.messages(identity.project(w,p),id,after,limit,before,latest);
+    }
     @PostMapping("/projects/{p}/conversations/{id}/archive")
     public void archiveConversation(@PathVariable String w,@PathVariable String p,@PathVariable String id,@RequestBody Revision r){chat.archive(identity.project(w,p),id,r.rowVersion(),true);}
     @PostMapping("/projects/{p}/conversations/{id}/restore")

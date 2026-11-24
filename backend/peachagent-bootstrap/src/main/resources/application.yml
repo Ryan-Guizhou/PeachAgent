@@ -11,7 +11,12 @@ spring:
     username: ${DB_USER}
     password: ${DB_PASSWORD}
     hikari:
-      maximum-pool-size: 16
+      maximum-pool-size: ${DB_POOL_SIZE:16}
+      data-source-properties:
+        cachePrepStmts: true
+        prepStmtCacheSize: 128
+        prepStmtCacheSqlLimit: 4096
+        useServerPrepStmts: true
   data:
     redis:
       host: ${REDIS_HOST:localhost}
