@@ -6,6 +6,7 @@ import com.peachsoft.peachagent.model.*;
 import com.peachsoft.peachagent.studio.*;
 import com.peachsoft.peachagent.metering.BudgetService;
 import com.peachsoft.peachagent.runtime.lease.LeaseFence;
+import com.peachsoft.peachagent.common.pagination.PageCursor;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
@@ -63,9 +64,23 @@ public class RunService {
     }
     public Map<String,Object> get(ScopeContext s,String id){return view(scoped(s,id,false));}
     public List<Map<String,Object>> list(ScopeContext s,String before,int limit){
-        if(before!=null)TimeCodec.parse(before);
-        return jdbc.queryForList("SELECT "+PROJECTION+" FROM RT_RUN WHERE TENANT_ID = ? AND WORKSPACE_ID = ? AND PROJECT_ID = ? AND ACTOR_USER_ID = ? AND CREATED_AT <= ? ORDER BY CREATED_AT DESC,ID DESC LIMIT ?",
-                s.tenantId(),s.workspaceId(),s.requireProject(),s.userId(),before==null?time.now():before,Math.max(1,Math.min(limit,100)))
+        return list(s,before,null,limit);
+    }
+
+    /** 同秒多条记录使用 ID 严格分页，避免重复或遗漏。 */
+    public List<Map<String,Object>> list(ScopeContext s,String before,String beforeId,int limit){
+        PageCursor cursor=PageCursor.of(before,beforeId);
+        String sql="SELECT "+PROJECTION+" FROM RT_RUN WHERE TENANT_ID = ? AND WORKSPACE_ID = ? AND PROJECT_ID = ? AND ACTOR_USER_ID = ?";
+        List<Object> args=new ArrayList<>(List.of(s.tenantId(),s.workspaceId(),s.requireProject(),s.userId()));
+        if(cursor.hasTieBreaker()){
+            sql+=" AND (CREATED_AT < ? OR (CREATED_AT = ? AND ID < ?))";
+            args.add(cursor.time());args.add(cursor.time());args.add(cursor.id());
+        }else{
+            sql+=" AND CREATED_AT <= ?";
+            args.add(cursor.time()==null?time.now():cursor.time());
+        }
+        args.add(Math.max(1,Math.min(limit,100)));
+        return jdbc.queryForList(sql+" ORDER BY CREATED_AT DESC,ID DESC LIMIT ?",args.toArray())
                 .stream().map(x->JsonData.view(mapper,x)).toList();
     }
     public List<Map<String,Object>> events(ScopeContext s,String id,long after){

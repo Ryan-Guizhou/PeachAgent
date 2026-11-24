@@ -5,6 +5,7 @@ import com.peachsoft.peachagent.common.IdGenerator;
 import com.peachsoft.peachagent.common.JsonData;
 import com.peachsoft.peachagent.common.ScopeContext;
 import com.peachsoft.peachagent.common.TimeCodec;
+import com.peachsoft.peachagent.common.pagination.PageCursor;
 import com.peachsoft.peachagent.iam.DatabaseTimeProvider;
 import java.math.BigDecimal;
 import java.time.ZoneOffset;
@@ -221,14 +222,29 @@ public class BudgetService {
     }
 
     public List<Map<String,Object>> usage(ScopeContext s,String from,String to,int limit){
+        return usage(s,from,to,null,null,limit);
+    }
+
+    /** 用量明细支持稳定的时间/ID 游标，汇总仍独立于分页。 */
+    public List<Map<String,Object>> usage(ScopeContext s,String from,String to,String before,String beforeId,int limit){
         TimeCodec.parse(from);TimeCodec.parse(to);
         if(from.compareTo(to)>=0)throw new DomainException("INVALID_RANGE",422,"Invalid usage range");
-        return jdbc.queryForList("""
+        PageCursor cursor=PageCursor.of(before,beforeId);
+        String sql="""
                 SELECT ID,RUN_ID,MODEL_ID,MODEL_TYPE,PROTOCOL_KEY,STATUS,INPUT_TOKENS,OUTPUT_TOKENS,TOTAL_TOKENS,
                     CACHED_TOKENS,REASONING_TOKENS,USAGE_SOURCE,COST_AMOUNT,COST_CURRENCY,COST_SOURCE,CREATED_AT,FINISHED_AT
                 FROM RT_MODEL_CALL WHERE TENANT_ID = ? AND WORKSPACE_ID = ? AND PROJECT_ID = ? AND CREATED_AT >= ? AND CREATED_AT < ?
-                ORDER BY CREATED_AT DESC,ID DESC LIMIT ?
-                """,s.tenantId(),s.workspaceId(),s.requireProject(),from,to,Math.max(1,Math.min(100,limit)))
+                """;
+        List<Object> args=new ArrayList<>(List.of(s.tenantId(),s.workspaceId(),s.requireProject(),from,to));
+        if(cursor.hasTieBreaker()){
+            sql+=" AND (CREATED_AT < ? OR (CREATED_AT = ? AND ID < ?))";
+            args.add(cursor.time());args.add(cursor.time());args.add(cursor.id());
+        }else if(cursor.time()!=null){
+            sql+=" AND CREATED_AT <= ?";
+            args.add(cursor.time());
+        }
+        args.add(Math.max(1,Math.min(100,limit)));
+        return jdbc.queryForList(sql+" ORDER BY CREATED_AT DESC,ID DESC LIMIT ?",args.toArray())
                 .stream().map(x->JsonData.view(mapper,x)).toList();
     }
 }

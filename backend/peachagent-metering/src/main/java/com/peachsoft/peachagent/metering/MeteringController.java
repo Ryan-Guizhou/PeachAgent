@@ -30,7 +30,8 @@ public class MeteringController {
     }
     @GetMapping("/usage")
     public List<Map<String,Object>> usage(@PathVariable String w,@PathVariable String p,@RequestParam String from,@RequestParam String to,
+                                           @RequestParam(required=false) String before,@RequestParam(required=false) String beforeId,
                                            @RequestParam(defaultValue="100") int limit){
-        return budgets.usage(identity.project(w,p),from,to,limit);
+        return budgets.usage(identity.project(w,p),from,to,before,beforeId,limit);
     }
 }

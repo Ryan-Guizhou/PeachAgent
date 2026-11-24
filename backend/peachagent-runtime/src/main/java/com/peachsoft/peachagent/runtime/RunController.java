@@ -27,7 +27,10 @@ public class RunController {
     public Map<String,Object> debug(@PathVariable String w,@PathVariable String p,@PathVariable String id,
             @RequestHeader("Idempotency-Key") String key,@RequestBody RunService.DebugInput input){return runs.debug(identity.project(w,p),id,input,key);}
     @GetMapping("/runs")
-    public List<Map<String,Object>> list(@PathVariable String w,@PathVariable String p,@RequestParam(required=false) String before,@RequestParam(defaultValue="50") int limit){return runs.list(identity.project(w,p),before,limit);}
+    public List<Map<String,Object>> list(@PathVariable String w,@PathVariable String p,@RequestParam(required=false) String before,
+            @RequestParam(required=false) String beforeId,@RequestParam(defaultValue="50") int limit){
+        return runs.list(identity.project(w,p),before,beforeId,limit);
+    }
     @GetMapping("/runs/{id}")
     public Map<String,Object> get(@PathVariable String w,@PathVariable String p,@PathVariable String id){return runs.get(identity.project(w,p),id);}
     @PostMapping("/runs/{id}/cancel")
