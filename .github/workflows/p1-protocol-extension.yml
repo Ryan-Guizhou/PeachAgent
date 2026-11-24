@@ -3,6 +3,9 @@ on:
   pull_request:
     paths:
       - 'backend/peachagent-bootstrap/src/test/java/com/peachsoft/peachagent/integration/model/**'
+      - 'backend/**'
+      - 'database/**'
+      - 'compose.dev.yml'
       - 'backend/qa/protocol-extension-fixture.py'
       - 'frontend/qa/protocol-extension.mjs'
       - '.github/workflows/p1-protocol-extension.yml'
@@ -14,6 +17,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
+      MYSQL_IMAGE: mysql:8.4
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: '1025'
+      SMTP_AUTH: 'false'
+      SMTP_SSL: 'false'
+      SMTP_TLS: 'false'
+      MAIL_FROM: qa@example.invalid
+      PEACHAGENT_TEST_SMTP: '1'
       MYSQL_ROOT_PASSWORD: ci-only-root
       DB_USER: peachagent
       DB_PASSWORD: ci-only-db
@@ -47,7 +58,24 @@ jobs:
           npm run build
           npx playwright install --with-deps chromium
       - name: Start isolated middleware
-        run: docker compose -f compose.dev.yml up -d --wait mysql redis mailpit
+        run: docker compose -f compose.dev.yml up -d --wait mysql redis
+      - name: Start isolated SMTP fixture
+        run: |
+          python3 backend/qa/smtp-fixture.py > smtp-fixture.log 2>&1 &
+          python3 - <<'PY'
+          import socket, time, urllib.request
+          for _ in range(60):
+              try:
+                  with socket.create_connection(("127.0.0.1",1025),timeout=2) as smtp:
+                      assert smtp.recv(256).startswith(b"220")
+                  with urllib.request.urlopen("http://127.0.0.1:8025/api/v1/messages",timeout=2) as response:
+                      assert response.status==200
+                  break
+              except (OSError,AssertionError):
+                  time.sleep(1)
+          else:
+              raise RuntimeError("SMTP fixture readiness timeout")
+          PY
       - name: Test independent adapter end-to-end
         run: |
           set -euo pipefail

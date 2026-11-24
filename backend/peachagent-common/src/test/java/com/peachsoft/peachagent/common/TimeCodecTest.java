@@ -5,9 +5,19 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.HashSet;
 import java.util.UUID;
-import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.*;
 
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * 验证 UTC 业务时间字符串的格式、边界和加减运算。
+ * @Author Mr Shu
+ * @Version 1.0.0
+ * @CreateTime 2026/11/24 11:27
+ */
 class TimeCodecTest {
     @Test
     void fixedUtcAndStrictParsing() {

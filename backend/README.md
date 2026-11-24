@@ -2,7 +2,7 @@
 
 [English](README_EN.md) | [产品需求](../requirements/PRD-PeachAgent.md) | [P1 技术方案](../technical/P1-TECHNICAL-DESIGN.md) | [前端启动](../frontend/README.md)
 
-P1 采用 JDK 21、Spring Boot 4.1.3、Maven 七模块及 MySQL 8.4 / Redis 7.4。API 提供鉴权、资源管理和 SSE；Worker 独立消费 MySQL 持久运行队列，调用模型并结算用量。前端为 Vue 3 + Vite。当前是开发环境，不是 P7 生产部署包；供应商真实调用及整期验收见 [#18](https://github.com/Ryan-Guizhou/PeachAgent/issues/18)。
+P1 采用 JDK 21、Spring Boot 4.1.3、Maven 七模块及 MySQL 5.7.44 或 8.4 / Redis 7.4。API 提供鉴权、资源管理和 SSE；Worker 独立消费 MySQL 持久运行队列，调用模型并结算用量。前端为 Vue 3 + Vite。当前是开发环境，不是 P7 生产部署包；供应商真实调用及整期验收见 [#18](https://github.com/Ryan-Guizhou/PeachAgent/issues/18)。
 
 ## 1. 拓扑与前置条件
 
@@ -12,7 +12,7 @@ flowchart LR
   V -->|/api 代理| A[API 8080]
   A --> D[(MySQL 3306)]
   A --> R[(Redis 6379)]
-  A --> M[Mailpit SMTP 1025]
+  A --> M[QQ SMTP SSL 465]
   W[Worker 无 HTTP 端口] --> D
   W --> P[模型供应商 HTTPS]
   A --> F[共享私有产物目录]
@@ -31,7 +31,7 @@ docker version
 docker compose version
 ```
 
-端口：MySQL 3306、Redis 6379、Mailpit SMTP 1025 / 邮箱页面 8025、API 8080、Vite 5173。Compose 中间件仅映射 127.0.0.1；Worker 无 Web 服务。端口冲突应先释放或同步修改映射及连接配置。
+端口：MySQL 3306、Redis 6379，外部 QQ SMTP 465、API 8080、Vite 5173。Compose 中间件仅映射 127.0.0.1；Worker 无 Web 服务。端口冲突应先释放或同步修改映射及连接配置。
 
 ## 2. 首次配置
 
@@ -56,10 +56,11 @@ $rng.Dispose()
 | DB_URL | 必填；jdbc:mysql://127.0.0.1:3306/peachagent | JDBC URL；已有数据库需满足初始化契约 |
 | REDIS_HOST / REDIS_PORT | localhost / 6379 | Redis 地址 |
 | REDIS_PASSWORD | 空（应用）/ Compose 必填 | Sa-Token Session、限流；与 Compose 一致 |
-| SMTP_HOST / SMTP_PORT | localhost / 1025 | 邮件挑战及密码恢复；开发使用 Mailpit |
-| SMTP_USER / SMTP_PASSWORD | 空 | 外部 SMTP 凭证 |
-| SMTP_AUTH / SMTP_TLS | false / false | SMTP AUTH / STARTTLS；外部 SMTP 按服务商配置 |
-| MAIL_FROM | no-reply@peachagent.local | 发件地址 |
+| SMTP_HOST / SMTP_PORT | smtp.qq.com / 465 | QQ 邮箱 SMTP |
+| SMTP_USER / SMTP_PASSWORD | 必填 | 完整 QQ 邮箱地址 / SMTP 授权码（非登录密码） |
+| SMTP_AUTH / SMTP_SSL / SMTP_TLS | true / true / false | SMTP 认证、隐式 SSL、STARTTLS；465 不启用 STARTTLS |
+| MYSQL_IMAGE | mysql:8.4 | 仅 Compose；全新卷可设 mysql:5.7.44，已有数据库无需启动 mysql 容器 |
+| MAIL_FROM | SMTP_USER | 发件地址 |
 | SERVER_PORT | 8080 | API 监听端口；改动须同步 Vite 代理 |
 | PUBLIC_ORIGIN | http://localhost:8080 | 允许的浏览器 Origin；Vite 开发为 http://127.0.0.1:5173；同源静态模式为 http://localhost:8080 |
 | COOKIE_SECURE | true | 只在本地 HTTP 开发设 false；HTTPS 应保持 true |
@@ -69,12 +70,12 @@ $rng.Dispose()
 | PEACHAGENT_ARTIFACT_DIRECTORY | ./data/artifacts | API/Worker 同一受保护目录；不同工作目录应使用绝对路径，非公开 Web 根目录 |
 | ADMIN_EMAIL / ADMIN_PASSWORD | admin-init 必填 | 可选首次管理员初始化；密码至少 12 字符，无默认管理员 |
 
-重要：MySQL 初始化为 UTF8MB4 / UTF8MB4_0900_AI_CI，LOWER_CASE_TABLE_NAMES=1 必须在空数据目录初始化时确定。不能在已有卷上直接修改。Flyway V1 创建 25 张业务表；业务时间以 UTC CHAR(14) yyyyMMddHHmmss 存储。SQL 标识符、关键字大写，密钥及外部模型 ID 保持精确原值。
+重要：新库使用 UTF8MB4 / UTF8MB4_UNICODE_CI，标识符要求 LOWER_CASE_TABLE_NAMES=1 或 2（Compose 固定 1）。不能在已有卷上直接修改该设置。已有 UTF8MB4 的不区分大小写排序规则仍允许，避免强制转换现有 8.4 数据。Flyway 自动识别 5.7 / 8.x：8.x 保留原始 V1 校验和；5.7 使用独立 V1、共享 V2 和 V3 等价触发器，保持原有 104 条 CHECK 的语义。不要关闭 Flyway 校验、自动 repair 或清库；已有失败迁移或跨版本迁移须备份后单独处理。5.7 已停止常规安全维护，生产推荐受支持的 8.x。外部 5.7 数据库需启用 InnoDB、DYNAMIC 行格式、足够的索引长度，并授予迁移账号 DDL、外键和 TRIGGER 权限（开启 binlog 时由 DBA 审核触发器创建权限）。Flyway V1 创建 25 张业务表；业务时间以 UTC CHAR(14) yyyyMMddHHmmss 存储。SQL 标识符、关键字大写，密钥及外部模型 ID 保持精确原值。
 
 ## 3. 启动中间件并构建
 
 ```bash
-docker compose --env-file .env -f compose.dev.yml up -d --wait mysql redis mailpit
+docker compose --env-file .env -f compose.dev.yml up -d --wait mysql redis
 docker compose --env-file .env -f compose.dev.yml ps
 mvn -B -f backend/pom.xml verify
 ```
@@ -123,7 +124,7 @@ npm install
 npm run dev
 ```
 
-打开 http://127.0.0.1:5173（不要改为 localhost，除非同步配置 PUBLIC_ORIGIN）。此模式不需要 API 提供静态文件；Vite 将 /api 代理至 127.0.0.1:8080，保留原 Origin。邮件页面 http://127.0.0.1:8025。详细前端说明见 [frontend/README.md](../frontend/README.md)。
+打开 http://127.0.0.1:5173（不要改为 localhost，除非同步配置 PUBLIC_ORIGIN）。此模式不需要 API 提供静态文件；Vite 将 /api 代理至 127.0.0.1:8080，保留原 Origin。验证码从实际收件邮箱获取。详细前端说明见 [frontend/README.md](../frontend/README.md)。
 
 ### IntelliJ IDEA
 
@@ -149,7 +150,7 @@ Worker 仍须独立启动。访问 http://localhost:8080/#/home。此方式对�
 ## 5. 首次使用：真实账户与模型
 
 1. 打开控制台注册页面，填写邮箱、显示名、币种，发送验证邮件。
-2. 在 Mailpit 邮件页面复制一次性验证串，输入至少 12 字符密码完成注册。登录后自动创建个人租户、默认空间、默认项目及三级预算。
+2. 在注册邮箱中复制一次性验证串，输入至少 12 字符密码完成注册。登录后自动创建个人租户、默认空间、默认项目及三级预算。
 3. 模型需要认证时，凭证中心创建 BEARER 或 API_KEY 凭证，填写供应商 origin 和实际 API Key。无需认证的明确授权本地模型使用 NONE，不绑定凭证。
 4. 模型中心新建供应商连接（Base URL 是协议的前缀，不含最终操作路径），新建模型实例、选择协议/版本与实际外部模型 ID，绑定当前项目。执行模型诊断，确认成功/VERIFIED 后设为默认或在对话选中该模型。
 5. 新建会话发消息；在运行记录和用量预算查看真实任务、事件、Token/费用。未知用量不是零；测试供应商可能收费。
@@ -178,14 +179,14 @@ npm run build
 npm audit --audit-level=high
 ```
 
-完整 IAM/Runtime/Chromium smoke 见 [.github/workflows/p1-backend.yml](../.github/workflows/p1-backend.yml)。脚本使用一次性数据库、Mailpit、固定测试账号及本地 HTTP fixture；不要在真实个人数据库上运行。浏览器 QA 需 Playwright 对应 Chromium；Linux CI 固定 Ubuntu 24.04，Windows 本地可在 frontend 执行 `npx playwright install chromium`。测试截图作为 CI 产物保存，fixture 不代替真实供应商验收。
+完整 IAM/Runtime/Chromium smoke 见 [.github/workflows/p1-backend.yml](../.github/workflows/p1-backend.yml)。脚本使用一次性数据库、仅 CI 使用的回环 SMTP fixture、固定测试账号及本地 HTTP fixture；不要在真实个人数据库上运行。浏览器 QA 需 Playwright 对应 Chromium；Linux CI 固定 Ubuntu 24.04，Windows 本地可在 frontend 执行 `npx playwright install chromium`。测试截图作为 CI 产物保存，fixture 不代替真实供应商验收。
 
 | 症状 | 排查与处理 |
 | --- | --- |
 | DB_URL / DB_PASSWORD 未解析 | .env 没有自动进入 JVM；在每个终端加载或在 IDE 中配置 |
 | MySQL access denied / 数据库契约错误 | 核对容器初次初始化用户/密码、字符排序规则及 lower_case_table_names；旧卷不会自动更新密码 |
-| /actuator/health DOWN | docker compose ps 与 logs mysql redis mailpit；检查 SMTP/Redis/DB 连接和鉴权 |
-| 注册收不到邮件 | Mailpit 8025、SMTP_HOST/PORT、MAIL_FROM；外部 SMTP 校验认证与 STARTTLS |
+| /actuator/health DOWN | docker compose ps 与 logs mysql redis；检查 SMTP/Redis/DB 连接和鉴权 |
+| 注册收不到邮件 | 检查 QQ SMTP 是否开启、SMTP_USER 与 MAIL_FROM 是否一致、授权码是否有效及 SSL 465 出站网络 |
 | 登录或写操作 403 | PUBLIC_ORIGIN 与浏览器 Origin 必须完全相同；不要混用 localhost 和 127.0.0.1；检查 CSRF 请求头 |
 | 登录后 401 | 本地 HTTP 时 COOKIE_SECURE=false；检查 Cookie/Redis 会话，重新登录 |
 | CREDENTIAL_VAULT_UNCONFIGURED / 解密失败 | 检查 32 字节 Base64 KEK、版本和 API/Worker 一致性；恢复原密钥，勿覆盖旧密文 |
@@ -196,3 +197,18 @@ npm audit --audit-level=high
 | Chromium 安装失败 | 使用受支持的 OS 与锁定 Playwright 版本；不得跳过浏览器门禁 |
 
 正常停止：先停止前端、API、Worker 进程（Ctrl+C），再执行 `docker compose --env-file .env -f compose.dev.yml down`，保留数据卷与 .env。仅一次性开发/CI 环境确认无需保留数据后才能使用 down -v（会清除 MySQL、Redis 数据）。不要删除真实数据或丢失 KEK。P7 生产部署、备份恢复和正式升级不属于当前交付。
+
+### QQ SMTP 与既有 MySQL 5.7
+
+QQ 邮箱网页端开启 SMTP 服务并生成独立授权码；应用仅通过环境变量读取账号及授权码，不需要邮件容器。发件地址默认等于 SMTP_USER。若使用自己的 MySQL，不启动 Compose 的 mysql 服务，先在该实例创建数据库并授权应用账号：
+
+```sql
+CREATE DATABASE IF NOT EXISTS PEACHAGENT CHARACTER SET UTF8MB4 COLLATE UTF8MB4_UNICODE_CI;
+SELECT @@LOWER_CASE_TABLE_NAMES, @@CHARACTER_SET_DATABASE, @@COLLATION_DATABASE;
+```
+
+用连接到目标数据库的会话检查变量；现有库的表字符集不应通过直接改库默认值盲目转换。保留已有数据及 KEK。应用默认配置：SMTP_HOST=smtp.qq.com、SMTP_PORT=465、SMTP_AUTH=true、SMTP_SSL=true、SMTP_TLS=false；填写 SMTP_USER（完整邮箱）和 SMTP_PASSWORD（授权码），不要将值提交。CI 覆盖真实 SMTP 协议链路但不验证你的 QQ 账号。
+
+### Java 规范
+
+按仓库 AGENTS.md 执行；本地使用 `mvn -f backend/pom.xml spotless:apply`，提交前 `mvn -f backend/pom.xml verify`。代码格式和类型级中文 Javadoc 由 CI 检查。

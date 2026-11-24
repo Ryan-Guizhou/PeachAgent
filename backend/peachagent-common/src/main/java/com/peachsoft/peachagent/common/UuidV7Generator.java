@@ -5,7 +5,12 @@ import java.time.Clock;
 import java.util.Objects;
 import java.util.UUID;
 
-/** UUIDv7：48 位毫秒时间、版本位、随机位及 RFC 变体位。 */
+/**
+ * UUIDv7：48 位毫秒时间、版本位、随机位及 RFC 变体位。
+ * @Author Mr Shu
+ * @Version 1.0.0
+ * @CreateTime 2026/11/24 11:27
+ */
 public final class UuidV7Generator implements IdGenerator {
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();

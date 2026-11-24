@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - "frontend/**"
+      - "backend/**"
+      - "compose.dev.yml"
       - ".github/workflows/p1-frontend.yml"
 jobs:
   build:
@@ -13,6 +15,8 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci --no-audit --no-fund
+        working-directory: frontend
+      - run: npm run format:check
         working-directory: frontend
       - run: npm run build
         working-directory: frontend

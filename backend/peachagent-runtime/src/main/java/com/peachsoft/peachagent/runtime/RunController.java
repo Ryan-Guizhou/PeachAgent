@@ -1,101 +1,185 @@
 package com.peachsoft.peachagent.runtime;
 
-import cn.dev33.satoken.stp.StpUtil;
 import com.peachsoft.peachagent.common.DomainException;
 import com.peachsoft.peachagent.iam.IdentityService;
+
+import cn.dev33.satoken.stp.StpUtil;
+
 import jakarta.servlet.http.HttpServletResponse;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Semaphore;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.util.*;
-import java.util.concurrent.Semaphore;
 import org.springframework.context.annotation.Profile;
-import org.springframework.http.*;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
 import tools.jackson.databind.json.JsonMapper;
 
+/**
+ * 运行提交、查询、停止、重试、SSE 与产物下载接口，项目权限及运行事实由服务端校验。
+ * @Author Mr Shu
+ * @Version 1.0.0
+ * @CreateTime 2026/11/24 11:41
+ */
 @RestController
 @Profile("api")
 @RequestMapping("/api/v1/workspaces/{w}/projects/{p}")
 public class RunController {
-    private static final Logger log=LoggerFactory.getLogger(RunController.class);
-    private final IdentityService identity;private final RunService runs;private final ArtifactStore artifacts;private final JsonMapper mapper;
-    private final Semaphore streams=new Semaphore(64);
-    public RunController(IdentityService identity,RunService runs,ArtifactStore artifacts,JsonMapper mapper){this.identity=identity;this.runs=runs;this.artifacts=artifacts;this.mapper=mapper;}
-    public record Retry(boolean acknowledgeUnknown) { }
-    @PostMapping("/conversations/{id}/runs")
-    public Map<String,Object> submit(@PathVariable String w,@PathVariable String p,@PathVariable String id,
-            @RequestHeader("Idempotency-Key") String key,@RequestBody RunService.ChatInput input){return runs.submit(identity.project(w,p),id,input,key);}
-    @PostMapping("/models/{id}/debug")
-    public Map<String,Object> debug(@PathVariable String w,@PathVariable String p,@PathVariable String id,
-            @RequestHeader("Idempotency-Key") String key,@RequestBody RunService.DebugInput input){return runs.debug(identity.project(w,p),id,input,key);}
-    @GetMapping("/runs")
-    public List<Map<String,Object>> list(@PathVariable String w,@PathVariable String p,@RequestParam(required=false) String before,
-            @RequestParam(required=false) String beforeId,@RequestParam(defaultValue="50") int limit){
-        return runs.list(identity.project(w,p),before,beforeId,limit);
+    private static final Logger log = LoggerFactory.getLogger(RunController.class);
+    private final IdentityService identity;
+    private final RunService runs;
+    private final ArtifactStore artifacts;
+    private final JsonMapper mapper;
+    private final Semaphore streams = new Semaphore(64);
+
+    public RunController(IdentityService identity, RunService runs, ArtifactStore artifacts, JsonMapper mapper) {
+        this.identity = identity;
+        this.runs = runs;
+        this.artifacts = artifacts;
+        this.mapper = mapper;
     }
+    /**
+     * 重试时确认可能存在的未知外部消费。
+     * @Author Mr Shu
+     * @Version 1.0.0
+     * @CreateTime 2026/11/24 11:41
+     */
+    public record Retry(boolean acknowledgeUnknown) {}
+
+    @PostMapping("/conversations/{id}/runs")
+    public Map<String, Object> submit(
+            @PathVariable String w,
+            @PathVariable String p,
+            @PathVariable String id,
+            @RequestHeader("Idempotency-Key") String key,
+            @RequestBody RunService.ChatInput input) {
+        return runs.submit(identity.project(w, p), id, input, key);
+    }
+
+    @PostMapping("/models/{id}/debug")
+    public Map<String, Object> debug(
+            @PathVariable String w,
+            @PathVariable String p,
+            @PathVariable String id,
+            @RequestHeader("Idempotency-Key") String key,
+            @RequestBody RunService.DebugInput input) {
+        return runs.debug(identity.project(w, p), id, input, key);
+    }
+
+    @GetMapping("/runs")
+    public List<Map<String, Object>> list(
+            @PathVariable String w,
+            @PathVariable String p,
+            @RequestParam(required = false) String before,
+            @RequestParam(required = false) String beforeId,
+            @RequestParam(defaultValue = "50") int limit) {
+        return runs.list(identity.project(w, p), before, beforeId, limit);
+    }
+
     @GetMapping("/runs/{id}")
-    public Map<String,Object> get(@PathVariable String w,@PathVariable String p,@PathVariable String id){return runs.get(identity.project(w,p),id);}
+    public Map<String, Object> get(@PathVariable String w, @PathVariable String p, @PathVariable String id) {
+        return runs.get(identity.project(w, p), id);
+    }
+
     @PostMapping("/runs/{id}/cancel")
-    public Map<String,Object> cancel(@PathVariable String w,@PathVariable String p,@PathVariable String id){return runs.cancel(identity.project(w,p),id);}
+    public Map<String, Object> cancel(@PathVariable String w, @PathVariable String p, @PathVariable String id) {
+        return runs.cancel(identity.project(w, p), id);
+    }
+
     @PostMapping("/runs/{id}/retry")
-    public Map<String,Object> retry(@PathVariable String w,@PathVariable String p,@PathVariable String id,@RequestHeader("Idempotency-Key") String key,@RequestBody Retry input){return runs.retry(identity.project(w,p),id,key,input.acknowledgeUnknown());}
+    public Map<String, Object> retry(
+            @PathVariable String w,
+            @PathVariable String p,
+            @PathVariable String id,
+            @RequestHeader("Idempotency-Key") String key,
+            @RequestBody Retry input) {
+        return runs.retry(identity.project(w, p), id, key, input.acknowledgeUnknown());
+    }
     /** 直接在 Servlet 虚拟线程交付事件，显式刷新响应缓冲区；连接、鉴权和游标仍有界。 */
-    @GetMapping(value="/runs/{id}/events",produces=MediaType.TEXT_EVENT_STREAM_VALUE)
-    public void events(@PathVariable String w,@PathVariable String p,@PathVariable String id,
-            @RequestHeader(value="Last-Event-ID",required=false) Long last,@RequestParam(defaultValue="0") long after,
-            HttpServletResponse response)throws IOException{
-        var principal=identity.current();
-        var scope=identity.project(principal,w,p,false);
-        runs.get(scope,id);
-        String token=StpUtil.getTokenValue();
-        if(!streams.tryAcquire())throw new DomainException("STREAM_LIMIT",429,"Too many event streams");
-        try{
+    @GetMapping(value = "/runs/{id}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public void events(
+            @PathVariable String w,
+            @PathVariable String p,
+            @PathVariable String id,
+            @RequestHeader(value = "Last-Event-ID", required = false) Long last,
+            @RequestParam(defaultValue = "0") long after,
+            HttpServletResponse response)
+            throws IOException {
+        var principal = identity.current();
+        var scope = identity.project(principal, w, p, false);
+        runs.get(scope, id);
+        String token = StpUtil.getTokenValue();
+        if (!streams.tryAcquire()) throw new DomainException("STREAM_LIMIT", 429, "Too many event streams");
+        try {
             response.setStatus(HttpServletResponse.SC_OK);
             response.setContentType(MediaType.TEXT_EVENT_STREAM_VALUE);
             response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-            response.setHeader("Cache-Control","no-cache, no-store");
-            response.setHeader("X-Accel-Buffering","no");
-            var out=response.getOutputStream();
-            long seq=Math.max(after,last==null?0:last),end=System.nanoTime()+25_000_000_000L;
-            long heartbeat=0;
-            boolean firstDelta=false;
-            while(System.nanoTime()<end){
-                Object logged=StpUtil.getLoginIdByToken(token);
-                if(logged==null||!scope.userId().equals(logged.toString()))break;
-                var page=runs.eventPage(scope,id,seq,principal.authEpoch());
-                for(var event:page.events()){
-                    seq=((Number)event.get("seq")).longValue();
-                    if("delta".equals(event.get("eventType")))firstDelta=true;
-                    String data="id: "+seq+"\nevent: "+event.get("eventType")+"\ndata: "+mapper.writeValueAsString(event)+"\n\n";
+            response.setHeader("Cache-Control", "no-cache, no-store");
+            response.setHeader("X-Accel-Buffering", "no");
+            var out = response.getOutputStream();
+            long seq = Math.max(after, last == null ? 0 : last), end = System.nanoTime() + 25_000_000_000L;
+            long heartbeat = 0;
+            boolean firstDelta = false;
+            while (System.nanoTime() < end) {
+                Object logged = StpUtil.getLoginIdByToken(token);
+                if (logged == null || !scope.userId().equals(logged.toString())) break;
+                var page = runs.eventPage(scope, id, seq, principal.authEpoch());
+                for (var event : page.events()) {
+                    seq = ((Number) event.get("seq")).longValue();
+                    if ("delta".equals(event.get("eventType"))) firstDelta = true;
+                    String data = "id: " + seq + "\nevent: " + event.get("eventType") + "\ndata: "
+                            + mapper.writeValueAsString(event) + "\n\n";
                     out.write(data.getBytes(StandardCharsets.UTF_8));
                     response.flushBuffer();
                 }
-                if(page.drained(seq))break;
-                if(page.events().size()==100)continue;
-                if(page.events().isEmpty()&&System.nanoTime()-heartbeat>=2_000_000_000L){
+                if (page.drained(seq)) break;
+                if (page.events().size() == 100) continue;
+                if (page.events().isEmpty() && System.nanoTime() - heartbeat >= 2_000_000_000L) {
                     out.write(": heartbeat\n\n".getBytes(StandardCharsets.UTF_8));
                     response.flushBuffer();
-                    heartbeat=System.nanoTime();
+                    heartbeat = System.nanoTime();
                 }
-                try{Thread.sleep(firstDelta?100:25);}
-                catch(InterruptedException ex){Thread.currentThread().interrupt();break;}
+                try {
+                    Thread.sleep(firstDelta ? 100 : 25);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
             }
-        }catch(DomainException ex){
-            if(!response.isCommitted())throw ex;
+        } catch (DomainException ex) {
+            if (!response.isCommitted()) throw ex;
             // 权限变化后停止交付，不再写入已提交的 SSE 响应。
-        }catch(IOException ex){
-            if(!response.isCommitted())throw ex;
-            log.debug("Run event stream disconnected runId={}",id);
-        }finally{
+        } catch (IOException ex) {
+            if (!response.isCommitted()) throw ex;
+            log.debug("Run event stream disconnected runId={}", id);
+        } finally {
             streams.release();
         }
     }
+
     @GetMapping("/runs/{id}/artifacts/{artifact}")
-    public ResponseEntity<byte[]> artifact(@PathVariable String w,@PathVariable String p,@PathVariable String id,@PathVariable String artifact){
-        var data=artifacts.read(identity.project(w,p),id,artifact);
-        return ResponseEntity.ok().contentType(MediaType.parseMediaType(data.mime())).header("Content-Disposition","attachment; filename=\""+data.name()+"\"")
-                .header("X-Content-Type-Options","nosniff").header("Cache-Control","no-store").body(data.bytes());
+    public ResponseEntity<byte[]> artifact(
+            @PathVariable String w, @PathVariable String p, @PathVariable String id, @PathVariable String artifact) {
+        var data = artifacts.read(identity.project(w, p), id, artifact);
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(data.mime()))
+                .header("Content-Disposition", "attachment; filename=\"" + data.name() + "\"")
+                .header("X-Content-Type-Options", "nosniff")
+                .header("Cache-Control", "no-store")
+                .body(data.bytes());
     }
 }

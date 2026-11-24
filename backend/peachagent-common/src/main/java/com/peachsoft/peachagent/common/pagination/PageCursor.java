@@ -2,15 +2,21 @@ package com.peachsoft.peachagent.common.pagination;
 
 import com.peachsoft.peachagent.common.DomainException;
 import com.peachsoft.peachagent.common.TimeCodec;
+
 import java.time.DateTimeException;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
-/** 使用 UTC 时间与 UUID 作为稳定的降序键集游标。 */
+/**
+ * 使用 UTC 时间与 UUID 作为稳定的降序键集游标。
+ * @Author Mr Shu
+ * @Version 1.0.0
+ * @CreateTime 2026/11/24 17:48
+ */
 public record PageCursor(String time, String id) {
 
-    private static final Pattern UUID_PATTERN = Pattern.compile(
-            "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+    private static final Pattern UUID_PATTERN =
+            Pattern.compile("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
 
     /** 时间允许作为独立范围上界；使用 ID 时必须同时提供时间。 */
     public static PageCursor of(String time, String id) {

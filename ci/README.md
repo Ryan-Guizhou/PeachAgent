@@ -102,3 +102,9 @@ flowchart TD
 每次交付简要说明完成内容、实际验证、未完成项和当前周期状态。PRD 保存范围与排期，周期 Issue 保存评审和验收，开发 Issue / PR 保存实现证据，README 只提供当前状态和入口。
 
 同一事实不在多套表格反复登记。修改需求时更新 PRD 及受影响的当前周期记录；历史批准、验收和失败事实保留，供后续周期核对。
+
+
+### P1 Java 工程和数据库门禁
+
+- Java 格式统一由 Spotless/Palantir 管理；本地执行 `mvn -f backend/pom.xml spotless:apply`，构建 validate 阶段拒绝格式漂移；`python3 scripts/check-java-style.py` 检查类型 Javadoc 与禁止通配 import。
+- P1 schema、backend CI 并行验证 MySQL 5.7.44 与 8.4；真实 QQ 凭证不进入流水线，使用 loopback-only SMTP fixture。性能基准保留 MySQL 8.4。只在所有受影响 CI 通过后合并 #65 对应 PR。

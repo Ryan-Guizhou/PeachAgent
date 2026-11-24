@@ -2,6 +2,9 @@ name: P1 performance
 on:
   pull_request:
     paths:
+      - 'backend/**'
+      - 'database/**'
+      - 'compose.dev.yml'
       - 'backend/qa/performance-smoke.py'
       - 'backend/qa/performance-client-test.py'
       - 'backend/peachagent-common/src/main/java/com/peachsoft/peachagent/common/pagination/**'
@@ -14,6 +17,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
+      MYSQL_IMAGE: mysql:8.4
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: '1025'
+      SMTP_AUTH: 'false'
+      SMTP_SSL: 'false'
+      SMTP_TLS: 'false'
+      MAIL_FROM: qa@example.invalid
+      PEACHAGENT_TEST_SMTP: '1'
       MYSQL_ROOT_PASSWORD: perf-only-root
       DB_USER: peachagent
       DB_PASSWORD: perf-only-db
@@ -35,7 +46,24 @@ jobs:
       - name: Package API and Worker
         run: mvn -B -f backend/pom.xml -DskipTests package
       - name: Start isolated database and middleware
-        run: docker compose -f compose.dev.yml up -d --wait mysql redis mailpit
+        run: docker compose -f compose.dev.yml up -d --wait mysql redis
+      - name: Start isolated SMTP fixture
+        run: |
+          python3 backend/qa/smtp-fixture.py > smtp-fixture.log 2>&1 &
+          python3 - <<'PY'
+          import socket, time, urllib.request
+          for _ in range(60):
+              try:
+                  with socket.create_connection(("127.0.0.1",1025),timeout=2) as smtp:
+                      assert smtp.recv(256).startswith(b"220")
+                  with urllib.request.urlopen("http://127.0.0.1:8025/api/v1/messages",timeout=2) as response:
+                      assert response.status==200
+                  break
+              except (OSError,AssertionError):
+                  time.sleep(1)
+          else:
+              raise RuntimeError("SMTP fixture readiness timeout")
+          PY
       - name: Benchmark 100k history, concurrent reads and writes, ten minute soak
         run: |
           set -euo pipefail

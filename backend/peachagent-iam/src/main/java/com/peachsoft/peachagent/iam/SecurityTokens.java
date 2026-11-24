@@ -7,10 +7,16 @@ import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.HexFormat;
 
-/** 生成随机挑战及只用于比较的不可逆摘要。 */
+/**
+ * 生成随机挑战及只用于比较的不可逆摘要。
+ * @Author Mr Shu
+ * @Version 1.0.0
+ * @CreateTime 2026/11/24 11:29
+ */
 public final class SecurityTokens {
     private static final SecureRandom RANDOM = new SecureRandom();
-    private SecurityTokens() { }
+
+    private SecurityTokens() {}
 
     public static String random() {
         byte[] bytes = new byte[32];
@@ -26,10 +32,13 @@ public final class SecurityTokens {
         }
     }
 
-    public static String digestHex(String value) { return HexFormat.of().formatHex(digest(value)); }
+    public static String digestHex(String value) {
+        return HexFormat.of().formatHex(digest(value));
+    }
 
     public static boolean equal(String a, String b) {
-        return a != null && b != null && MessageDigest.isEqual(
-                a.getBytes(StandardCharsets.UTF_8), b.getBytes(StandardCharsets.UTF_8));
+        return a != null
+                && b != null
+                && MessageDigest.isEqual(a.getBytes(StandardCharsets.UTF_8), b.getBytes(StandardCharsets.UTF_8));
     }
 }

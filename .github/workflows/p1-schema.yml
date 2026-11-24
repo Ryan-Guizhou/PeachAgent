@@ -3,16 +3,22 @@ on:
   pull_request:
     paths:
       - 'database/**'
-      - 'backend/**/db/migration/**'
+      - 'backend/**/db/**'
       - '.github/workflows/p1-schema.yml'
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   schema:
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        mysql: ['5.7.44', '8.4']
+    env:
+      MYSQL_IMAGE: mysql:${{ matrix.mysql }}
     steps:
       - uses: actions/checkout@v4
-      - name: MySQL 8.4 migration and schema verification
+      - name: MySQL migration and schema verification
         run: bash database/verify-schema.sh
