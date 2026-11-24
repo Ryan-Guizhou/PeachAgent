@@ -20,9 +20,9 @@ public final class PromptTemplate {
         matcher.reset();while(matcher.find())found.add(matcher.group(1));
         if(!found.equals(schema.keySet()))throw invalid("Template variables and schema must match");
         for(var entry:schema.entrySet()){
-            if(!(entry.getValue() instanceof Map<?,?> variable)||!Set.of("type","required","default").containsAll(variable.keySet()))
+            if(!(entry.getValue() instanceof Map<?,?> variable)||!variable.keySet().stream().allMatch(key->key instanceof String&&Set.of("type","required","default").contains(key)))
                 throw invalid("Invalid variable schema");
-            if(!Set.of("string","number","boolean").contains(variable.get("type")))throw invalid("Invalid variable type");
+            if(!(variable.get("type") instanceof String type)||!Set.of("string","number","boolean").contains(type))throw invalid("Invalid variable type");
             if(variable.containsKey("required")&&!(variable.get("required") instanceof Boolean))throw invalid("Invalid required flag");
             if(variable.containsKey("default"))check(variable,variable.get("default"));
         }

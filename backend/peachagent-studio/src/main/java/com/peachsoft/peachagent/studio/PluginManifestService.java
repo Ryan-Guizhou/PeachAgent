@@ -5,11 +5,11 @@ import com.peachsoft.peachagent.common.IdGenerator;
 import com.peachsoft.peachagent.common.JsonData;
 import com.peachsoft.peachagent.common.ScopeContext;
 import com.peachsoft.peachagent.iam.DatabaseTimeProvider;
-import com.peachsoft.peachagent.iam.IdentityService;
 import com.peachsoft.peachagent.iam.SecurityTokens;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import com.peachsoft.peachagent.studio.plugin.PluginSchemaValidator;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,23 +23,15 @@ public class PluginManifestService {
     public record Manifest(String pluginKey,String pluginVersion,String name,String description,
                            Map<String,Object> configSchema,List<String> permissions,List<String> extensionPoints){ }
     public void validate(Manifest m){
-        if(m.pluginKey()==null||!m.pluginKey().matches("[a-z][a-z0-9._-]{0,99}")||m.pluginVersion()==null||
+        if(m==null||m.pluginKey()==null||!m.pluginKey().matches("[a-z][a-z0-9._-]{0,99}")||m.pluginVersion()==null||
             !m.pluginVersion().matches("[0-9]+\\.[0-9]+\\.[0-9]+([.-][a-zA-Z0-9.-]+)?")||m.pluginVersion().length()>40)
             throw invalid();
         JsonData.requiredText(m.name(),100);
         if(m.description()!=null&&m.description().length()>500||m.configSchema()==null||m.permissions()==null||m.extensionPoints()==null)throw invalid();
-        if(!Set.of("type","properties","required","additionalProperties").containsAll(m.configSchema().keySet())||!"object".equals(m.configSchema().get("type")))throw invalid();
-        if(!(m.configSchema().get("properties") instanceof Map<?,?> properties)||properties.size()>50)throw invalid();
-        for(var entry:properties.entrySet()){
-            if(!entry.getKey().toString().matches("[A-Za-z_][A-Za-z0-9_]{0,63}")||!(entry.getValue() instanceof Map<?,?> spec)
-                    ||!Set.of("type","title","description","enum","minimum","maximum").containsAll(spec.keySet())
-                    ||!Set.of("string","number","integer","boolean").contains(spec.get("type")))throw invalid();
-        }
-        if(m.configSchema().containsKey("required")&&(!(m.configSchema().get("required") instanceof List<?> required)||!properties.keySet().containsAll(required)))throw invalid();
-        if(m.permissions().size()>20||m.extensionPoints().size()>20||
-                m.permissions().stream().anyMatch(x->x==null||!x.matches("[a-z][a-z0-9._:-]{0,63}"))||
-                m.extensionPoints().stream().anyMatch(x->x==null||!x.matches("[a-z][a-z0-9._:-]{0,63}"))||
-                mapper.writeValueAsString(m).length()>32768)throw invalid();
+        PluginSchemaValidator.validate(m.configSchema());
+        PluginSchemaValidator.validateIdentifiers(m.permissions());
+        PluginSchemaValidator.validateIdentifiers(m.extensionPoints());
+        if(mapper.writeValueAsString(m).length()>32768)throw invalid();
     }
     public List<Map<String,Object>> list(ScopeContext s){
         return jdbc.queryForList("""
@@ -50,12 +42,16 @@ public class PluginManifestService {
     @Transactional
     public Map<String,Object> create(ScopeContext s,Manifest input){
         validate(input);String id=ids.nextId(),now=time.now();
-        jdbc.update("""
+        try {
+            jdbc.update("""
                 INSERT INTO PLUGIN_MANIFEST (ID,TENANT_ID,WORKSPACE_ID,PLUGIN_KEY,PLUGIN_VERSION,NAME,DESCRIPTION,MANIFEST_SCHEMA_VERSION,CONFIG_SCHEMA,DECLARED_PERMISSIONS,EXTENSION_POINTS,MANIFEST_HASH,STATUS,CREATED_AT,CREATED_BY,UPDATED_AT,UPDATED_BY)
                 VALUES (?,?,?,?,?,?,?,1,?,?,?,?,'DRAFT',?,?,?,?)
                 """,id,s.tenantId(),s.workspaceId(),input.pluginKey(),input.pluginVersion(),input.name(),input.description(),
                 mapper.writeValueAsString(input.configSchema()),mapper.writeValueAsString(input.permissions()),mapper.writeValueAsString(input.extensionPoints()),
                 SecurityTokens.digest(mapper.writeValueAsString(input)),now,s.userId(),now,s.userId());
+        } catch (DuplicateKeyException ex) {
+            throw new DomainException("MANIFEST_VERSION_EXISTS",409,"Plugin version already exists");
+        }
         return Map.of("id",id,"status","DRAFT");
     }
     @Transactional
