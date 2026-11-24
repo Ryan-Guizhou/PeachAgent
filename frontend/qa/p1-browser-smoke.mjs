@@ -94,7 +94,7 @@ try {
   const partial=chatRows.find(row=>row.title==='Partial response QA')
   const original=chatRows.find(row=>row.title==='Fixture conversation')
   assert.ok(partial&&original)
-  const partialPath=base+chatScope+'/conversations/'+partial.id+'/messages'
+  const partialPath=base+chatScope+'/conversations/'+partial.id+'/messages?latest=true&limit=20'
   let releaseChat
   const chatGate=new Promise(resolve=>{releaseChat=resolve})
   const delayChat=async route=>{const response=await route.fetch();await chatGate;await route.fulfill({response})}
@@ -118,6 +118,23 @@ try {
   await page.getByRole('button',{name:/Partial response QA/}).click()
   await page.getByText('Retained partial response',{exact:true}).waitFor()
   console.log('PASS: retained partial response, refresh and stale conversation response isolation')
+  await page.getByRole('button',{name:/Long history QA/}).click()
+  await page.getByText('History message 11',{exact:true}).waitFor()
+  assert.equal(await page.getByText('History message 00',{exact:true}).count(),0)
+  await page.getByRole('button',{name:/加载更早消息|Load earlier messages/}).click()
+  await page.getByText('History message 00',{exact:true}).waitFor()
+  assert.equal(await page.locator('.chat-body .message').count(),24)
+  const firstAnswer=page.locator('.chat-body .message.assistant').first()
+  assert.equal(await firstAnswer.getByRole('button',{name:/无帮助|Not helpful/}).getAttribute('aria-pressed'),'true')
+  await firstAnswer.getByRole('button',{name:/^有帮助$|^Helpful$/}).click()
+  await page.waitForFunction(()=>document.querySelector('.chat-body .message.assistant button[aria-pressed="true"]')?.textContent==='↑')
+  await page.reload()
+  await page.getByRole('button',{name:/Long history QA/}).click()
+  await page.getByText('History message 11',{exact:true}).waitFor()
+  await page.getByRole('button',{name:/加载更早消息|Load earlier messages/}).click()
+  await page.getByText('History message 00',{exact:true}).waitFor()
+  assert.equal(await page.locator('.chat-body .message.assistant').first().getByRole('button',{name:/^有帮助$|^Helpful$/}).getAttribute('aria-pressed'),'true')
+  console.log('PASS: newest long conversation page, earlier message paging and persistent accessible feedback')
   await page.getByRole('button',{name:/新对话|New chat/}).click()
   await page.getByRole('button',{name:/归档会话|Archive chat/}).click()
   await page.getByText(/此会话为只读|This conversation is read-only/).waitFor()
