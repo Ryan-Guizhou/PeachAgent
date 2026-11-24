@@ -55,7 +55,7 @@ Persist and back up the key; API and Worker use the same key/version. Do not reg
 | CREDENTIAL_KEK_VERSION | 1 | Key version shared by API and Worker |
 | PEACHAGENT_ALLOWED_INTERNAL_ORIGINS | Empty | Explicit comma-separated trusted internal origins, e.g. http://127.0.0.1:11434; default public HTTPS:443; metadata remains blocked |
 | PEACHAGENT_ARTIFACT_DIRECTORY | ./data/artifacts | Same private directory for API and Worker; use absolute path if working directories differ |
-| ADMIN_EMAIL / ADMIN_PASSWORD | Required by admin-init only | Optional first administrator; at least 12-character password |
+| ADMIN_EMAIL / ADMIN_PASSWORD | Required by admin-init only | Optional first administrator for a non-dev database; at least 12-character password |
 
 New databases use UTF8MB4 / UTF8MB4_UNICODE_CI. Case-insensitive identifiers require LOWER_CASE_TABLE_NAMES=1 or 2 (Compose uses 1). Never change this setting on an existing volume. Existing case-insensitive UTF8MB4 collations remain accepted. Flyway detects 5.7 / 8.x: 8.x retains its original V1 checksum; 5.7 uses a separate V1, shared V2, and V3 equivalent triggers to enforce all 104 original checks. Do not automatically repair, delete, or disable migration validation; back up and review failed/cross-version migrations separately. MySQL 5.7 is past regular security maintenance; prefer supported 8.x in production. External 5.7 needs InnoDB, DYNAMIC row format, sufficient index length, and DDL/foreign-key/TRIGGER privileges (review trigger privileges with the DBA when binlog is enabled). Flyway V1 creates 25 business tables. Business time is UTC CHAR(14) yyyyMMddHHmmss. SQL identifiers and keywords are uppercase; credentials and external model IDs retain exact case.
 
@@ -90,7 +90,7 @@ set +a
 Terminal A (load .env first):
 
 ```bash
-java -jar backend/peachagent-bootstrap/target/peachagent-bootstrap-1.0.0-SNAPSHOT.jar --spring.profiles.active=api
+java -jar backend/peachagent-bootstrap/target/peachagent-bootstrap-1.0.0-SNAPSHOT.jar --spring.profiles.active=api,dev
 ```
 
 Wait for `curl http://127.0.0.1:8080/actuator/health` to return UP (PowerShell: `Invoke-RestMethod http://127.0.0.1:8080/actuator/health`). API performs Flyway migration. Terminal B (load same .env, same repository working directory):
@@ -109,12 +109,12 @@ npm run dev
 
 Open http://127.0.0.1:5173, matching PUBLIC_ORIGIN exactly. Vite proxies /api to 127.0.0.1:8080 and preserves Origin. Retrieve verification codes from the real recipient inbox. See [frontend setup](../frontend/README_EN.md).
 
-IntelliJ IDEA: import backend/pom.xml; set project SDK and Maven runner JRE to JDK 21. Create two Application/Spring Boot configurations with main class com.peachsoft.peachagent.PeachAgentApplication, classpath peachagent-bootstrap, repository root as working directory, program arguments --spring.profiles.active=api / --spring.profiles.active=worker, and the same environment from .env. Do not share run configurations containing secrets. Start API before Worker; use a separate npm dev configuration in frontend.
+IntelliJ IDEA: import backend/pom.xml; set project SDK and Maven runner JRE to JDK 21. Create two Application/Spring Boot configurations with main class com.peachsoft.peachagent.PeachAgentApplication, classpath peachagent-bootstrap, repository root as working directory, program arguments --spring.profiles.active=api,dev / --spring.profiles.active=worker, and the same environment from .env. Do not share run configurations containing secrets. Start API before Worker; use a separate npm dev configuration in frontend.
 
 Optional same-origin build: from frontend run npm install and npm run build, return to repository root, load .env and override PUBLIC_ORIGIN=http://localhost:8080 in the API terminal (Bash export or PowerShell $env:PUBLIC_ORIGIN). Run:
 
 ```bash
-java -jar backend/peachagent-bootstrap/target/peachagent-bootstrap-1.0.0-SNAPSHOT.jar --spring.profiles.active=api --spring.web.resources.static-locations=file:./frontend/dist/
+java -jar backend/peachagent-bootstrap/target/peachagent-bootstrap-1.0.0-SNAPSHOT.jar --spring.profiles.active=api,dev --spring.web.resources.static-locations=file:./frontend/dist/
 ```
 
 Run Worker separately; visit http://localhost:8080/#/home. This matches CI's static UI mode, not production packaging.
@@ -133,7 +133,7 @@ Register with email, name, currency and a password of at least 12 characters; re
 | anthropic.messages | LLM | https://api.anthropic.com/v1 | API_KEY |
 | dashscope.text-rerank | RERANK | https://dashscope.aliyuncs.com/api/v1 | BEARER |
 
-Examples are protocol prefixes, not verified live vendor compatibility. Check available models and actual endpoint; streaming usage and b64 PNG/WAV contracts vary. STT is limited to 10 MiB WAV; artifacts are limited to 20 MiB and expire after 24 hours. Only allow trusted local origins through the explicit allowlist on both API and Worker. Optional first administrator: load .env in a separate terminal, set ADMIN_EMAIL and ADMIN_PASSWORD, run the same jar once with --spring.profiles.active=admin-init, and remove the password from that terminal afterward. Do not combine admin-init with API; no default administrator exists and repeat provisioning is rejected.
+Examples are protocol prefixes, not verified live vendor compatibility. Check available models and actual endpoint; streaming usage and b64 PNG/WAV contracts vary. STT is limited to 10 MiB WAV; artifacts are limited to 20 MiB and expire after 24 hours. Only allow trusted local origins through the explicit allowlist on both API and Worker. Optional first administrator: load .env in a separate terminal, set ADMIN_EMAIL and ADMIN_PASSWORD, run the same jar once with --spring.profiles.active=admin-init, and remove the password from that terminal afterward. Do not combine admin-init with API; no default administrator exists in a non-dev database and repeat provisioning is rejected.
 
 ## 6. Validate, troubleshoot and stop
 
@@ -180,3 +180,14 @@ Inspect the variables in a session connected to the intended database. Do not bl
 ### Java style
 
 Follow repository AGENTS.md. Run `mvn -f backend/pom.xml spotless:apply` locally and `mvn -f backend/pom.xml verify` before submitting. CI checks formatting and Chinese type Javadoc.
+
+## Local development seed accounts (Flyway V4)
+
+| Role | Email | Initial plaintext password |
+| --- | --- | --- |
+| Platform administrator | admin@peachagent.example.invalid | `PeachAgent-Dev-Admin-2026!` |
+| Ordinary user | user@peachagent.example.invalid | `PeachAgent-Dev-User-2026!` |
+
+These are public synthetic local-only test accounts; the SQL stores only Argon2id password hashes. Each personal tenant gets a default workspace, project and three budget policies (concurrency 8/4/2, per-run limit 180 seconds). Admin does not gain other tenants' private resource permissions. No real model credentials, fake calls or fabricated usage are seeded.
+
+Use `api,dev` as Active profiles in IDEA or `--spring.profiles.active=api,dev` as the program argument. Worker still uses `worker`. The dev API binds to 127.0.0.1, disables secure cookies for local HTTP, and excludes mail from health so login can be verified without QQ SMTP; real registration/reset still requires SMTP. Match the browser origin to PUBLIC_ORIGIN. V4 is under `db/dev` and loaded only by a local dev API. Existing V1/V2/V3 checksums remain unchanged. Normal `api` does not insert these accounts, and Flyway validation rejects a database with V4 applied if the dev profile is removed. Use a separate production database; never bypass migration validation or expose dev accounts publicly. Reserved email/UUID collisions fail without overwriting existing records; restarts do not reset credentials or edits. The existing local connection defaults are preserved, with DB_URL, DB_USER and DB_PASSWORD environment variables taking precedence. Always override them with separate least-privilege credentials for deployment.

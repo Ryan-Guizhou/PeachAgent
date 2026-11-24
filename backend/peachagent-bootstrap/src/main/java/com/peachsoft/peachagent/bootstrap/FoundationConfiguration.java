@@ -13,6 +13,8 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.flyway.autoconfigure.FlywayConfigurationCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
@@ -38,21 +40,37 @@ public class FoundationConfiguration {
     /**
      * MySQL 5.7 不支持具名 CHECK 约束，独立迁移保留约束语义。
      * MySQL 8 继续使用原始 V1，既有 Flyway 校验和保持不变。
+     * 仅显式启用本地开发 profile 的 API 加载已知测试账号迁移。
      *
-     * @return 按数据库版本选择迁移目录的配置器
+     * @param environment 当前运行环境及 profile
+     * @return 按数据库版本和开发环境选择迁移目录的配置器
      */
     @Bean
-    FlywayConfigurationCustomizer databaseMigrations() {
+    FlywayConfigurationCustomizer databaseMigrations(Environment environment) {
         return configuration -> {
+            boolean development = environment.acceptsProfiles(Profiles.of("dev"));
+            if (development
+                    && (!environment.acceptsProfiles(Profiles.of("api & !worker & !admin-init"))
+                            || !"127.0.0.1".equals(environment.getProperty("server.address")))) {
+                throw new IllegalStateException("Development seed requires the API profile and loopback address");
+            }
             try (var connection = configuration.getDataSource().getConnection()) {
                 int major = connection.getMetaData().getDatabaseMajorVersion();
                 int minor = connection.getMetaData().getDatabaseMinorVersion();
+                String schemaLocation;
                 if (major == 5 && minor == 7) {
-                    configuration.locations("classpath:db/mysql57", "classpath:db/common");
+                    schemaLocation = "classpath:db/mysql57";
                 } else if (major >= 8) {
-                    configuration.locations("classpath:db/migration", "classpath:db/common");
+                    schemaLocation = "classpath:db/migration";
                 } else {
                     throw new IllegalStateException("MySQL 5.7 or 8.x is required");
+                }
+                // 不忽略已应用的未来迁移，防止关闭 dev 后接受含已知账号的数据库。
+                configuration.ignoreMigrationPatterns(new String[0]);
+                if (development) {
+                    configuration.locations(schemaLocation, "classpath:db/common", "classpath:db/dev");
+                } else {
+                    configuration.locations(schemaLocation, "classpath:db/common");
                 }
             } catch (SQLException exception) {
                 throw new IllegalStateException("Unable to determine MySQL version", exception);

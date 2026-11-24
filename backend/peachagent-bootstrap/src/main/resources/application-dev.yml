@@ -1,0 +1,11 @@
+# Explicit local API profile; known demo credentials must never be exposed publicly.
+server:
+  address: 127.0.0.1
+sa-token:
+  cookie:
+    secure: false
+management:
+  health:
+    mail:
+      # Login verification must work without configured QQ SMTP.
+      enabled: false
