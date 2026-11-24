@@ -98,7 +98,7 @@
  function canDelete(spaceId){
   const id=owner();if(!id)return false;
   const state=read(id),target=state.spaces.find(s=>s.id===spaceId);
-  return !!target?.archived&&spaceId!==DEFAULT_ID&&spaceId!==state.active&&localStorage.getItem(storageKey(id,spaceId))===null&&localStorage.getItem('peachagent-projects-v1::'+id+'::'+spaceId)===null;
+  try{return !!target?.archived&&spaceId!==DEFAULT_ID&&spaceId!==state.active&&localStorage.getItem(storageKey(id,spaceId))===null&&localStorage.getItem('peachagent-projects-v1::'+id+'::'+spaceId)===null;}catch(_){return false;}
  }
  function remove(spaceId){
   if(!canDelete(spaceId))throw new Error('只能删除没有项目目录和已保存数据的归档空间');

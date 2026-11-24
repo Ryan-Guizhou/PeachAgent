@@ -87,4 +87,5 @@ assert.equal(stops,3);
 assert.equal(W.rename('default','新名称').name,'新名称');
 assert.equal(W.active().name,'新名称');
 assert.equal(studio.state.spaceName,'新名称');
+W.archive(newSpace.id);assert.throws(()=>W.switchTo(newSpace.id),/归档/);assert(W.canDelete(newSpace.id));W.remove(newSpace.id);assert.equal(W.list().length,1);
 console.log('PASS: appearance theme/locale persistence, default workspace, isolation, rename, dirty switch guard.');

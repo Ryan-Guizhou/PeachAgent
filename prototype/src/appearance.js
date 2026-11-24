@@ -170,7 +170,7 @@
   if(!root?.querySelectorAll)return;
   // Only opt-in UI elements and known static shell/auth labels. Never traverse
   // arbitrary business data (resource names, chat text, knowledge or JSON).
-  const fixed='[data-i18n],.nav-label,[data-nav]>span:not([data-nav-count]),.auth-step-label,.auth-feature-list strong,.auth-feature-list span,.auth-switch a,.auth-back,.auth-divider span,.auth-prototype-label,.auth-credential-demo .credential-label,.crumb-home,.demo-badge,.sidebar-status .small:not([data-chrome]),.space-copy small,[data-chrome="page-title"],[data-chrome="role"],.auth-footer span';
+  const fixed='[data-i18n],.nav-label,[data-nav]>span:not([data-nav-count]),.auth-step-label,.auth-feature-list strong,.auth-feature-list span,.auth-switch a,.auth-back,.auth-divider span,.auth-prototype-label,.auth-credential-demo .credential-label,.crumb-home,.demo-badge,.sidebar-status .small:not([data-chrome]),.space-copy small,.auth-footer span';
   root.querySelectorAll(fixed).forEach(el=>{
    if(el.closest?.('[data-no-i18n]')||el.children.length)return;
    const source=el.getAttribute('data-i18n')||el.getAttribute('data-i18n-source')||el.textContent.trim();

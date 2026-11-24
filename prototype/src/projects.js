@@ -56,7 +56,7 @@
   }
   function canDelete(id) {
     const current = required(), r = read(current), item = r.items.find(x => x.id === id);
-    return !!item?.archived && id !== r.active && id !== DEFAULT_ID && localStorage.getItem(storageKey(current, id)) === null;
+    try { return !!item?.archived && id !== r.active && id !== DEFAULT_ID && localStorage.getItem(storageKey(current, id)) === null; } catch (_) { return false; }
   }
   function remove(id) {
     if (!canDelete(id)) fail('只能删除从未保存过数据的已归档项目；其他项目保留历史记录');
@@ -82,7 +82,10 @@
   }
   function importable(projectId) {
     const data = sourceState(projectId);
-    return (data?.contentStore?.contents || []).filter(item => ['prompt', 'skill'].includes(item.type) && item.status !== 'archived' && item.version).map(item => ({ id: item.id, name: item.name, type: item.type, version: item.version }));
+    const entries=(data?.contentStore?.contents || []).filter(item => ['prompt', 'skill'].includes(item.type) && item.status !== 'archived' && item.version).map(item => ({ id: item.id, name: item.name, type: item.type, version: String(item.version) }));
+    for(const item of data?.contentStore?.knowledge||[])if(item.status!=='archived'&&item.version)entries.push({id:item.id,name:item.name,type:'knowledge',version:String(item.version)});
+    for(const item of data?.modelRegistry?.models||[]){const provider=data.modelRegistry.providers?.find(p=>p.id===item.providerId&&!p.archived);if(!item.archived&&provider)entries.push({id:item.id,name:item.name,type:'model',version:String(item.revision)+'/'+String(provider.revision)});}
+    return entries;
   }
   function importContent(projectId, itemId, version, name) {
     const allowed = importable(projectId).find(item => item.id === itemId && item.version === version);
@@ -91,6 +94,22 @@
     if (!item) fail('来源版本不存在');
     const S = window.Studio;
     return S.ContentStore.saveContent({ type: item.type, name: name || item.name, content: item.content, description: item.description, tags: item.tags, dependencies: item.dependencies, origin: { projectId, resourceId: itemId, version } });
+  }
+  function importResource(projectId,itemId,version,type,name) {
+    const allowed=importable(projectId).find(item=>item.id===itemId&&item.type===type&&item.version===version);
+    if(!allowed)fail('来源资源或版本已变化，请重新选择');
+    const state=sourceState(projectId),S=window.Studio,origin={projectId,resourceId:itemId,version};
+    if(type==='knowledge'){
+      const item=state.contentStore.knowledge.find(x=>x.id===itemId&&String(x.version)===version);
+      if(!item)fail('来源知识库版本不存在');
+      return {route:'knowledge',id:S.ContentStore.importKnowledgeSnapshot(item,name,origin).id};
+    }
+    if(type==='model'){
+      const item=state.modelRegistry.models.find(x=>x.id===itemId),provider=state.modelRegistry.providers.find(x=>x.id===item?.providerId);
+      if(!item||!provider||String(item.revision)+'/'+String(provider.revision)!==version)fail('来源模型版本不存在');
+      return {route:'models',id:S.Models.importTemplate(item,provider,name,origin).id};
+    }
+    return {route:'content-detail',id:importContent(projectId,itemId,version,name).id};
   }
   function attach(S) {
     const E = S.escape, T = (zh, en) => window.StudioAppearance?.getLocale() === 'en-US' ? en : zh;
@@ -118,7 +137,7 @@
         (item.id!==DEFAULT_ID&&!item.active?S.btn(item.archived?T('恢复','Restore'):T('归档','Archive'),'project-archive',{small:true,variant:'secondary',attrs:attr(item.id)}):'')+
         (item.archived&&canDelete(item.id)?S.btn(T('删除空项目','Delete empty project'),'project-delete',{small:true,variant:'danger',attrs:attr(item.id)}):'')+'</div></div>').join('');
       return S.header('PROJECTS',T('项目管理','Projects'),T('在当前工作空间内组织独立的应用、资源和运行记录。','Organize independent apps, resources and runs in this workspace.'),S.btn(T('创建项目','Create project'),'project-create',{icon:'plus'}))+
-        '<div class="panel panel-pad"><div class="between"><div><h2>'+label('当前项目','Current project')+'</h2><p data-no-i18n class="muted">'+E(current.name)+'</p></div>'+S.btn(T('导入资源副本','Import resource copy'),'project-import',{variant:'secondary',icon:'download'})+'</div><div class="row" style="flex-wrap:wrap;margin-top:16px">'+summary()+'</div><p class="small muted" style="margin-top:12px">'+label('模型、工具、知识和内容在项目内通过原有管理页维护；跨项目仅显式复制 Prompt / Skill 固定版本，不复制凭证或任务。','Manage models, tools, knowledge and content in their original pages. Cross-project imports copy only explicit Prompt / Skill versions, never credentials or runs.')+'</p></div><section class="panel panel-pad" style="margin-top:16px"><h2>'+label('全部项目','All projects')+'</h2><div class="space-list" style="margin-top:12px">'+rows+'</div><p class="small muted" style="margin-top:12px">'+label('归档保留所有历史。只有从未保存过数据的已归档项目可以删除。切换项目会停止本地执行并回到工作台。','Archiving preserves history. Only unused archived projects can be deleted. Switching stops local runs and returns to the dashboard.')+'</p></section>';
+        '<div class="panel panel-pad"><div class="between"><div><h2>'+label('当前项目','Current project')+'</h2><p data-no-i18n class="muted">'+E(current.name)+'</p></div>'+S.btn(T('导入资源副本','Import resource copy'),'project-import',{variant:'secondary',icon:'download'})+'</div><div class="row" style="flex-wrap:wrap;margin-top:16px">'+summary()+'</div><p class="small muted" style="margin-top:12px">'+label('模型、工具、知识和内容在项目内通过原有管理页维护；跨项目显式复制 Prompt / Skill、知识库及模型的固定版本；不复制凭证或任务。知识库重置检索模型，模型副本默认停用。','Manage models, tools, knowledge and content in their original pages. Cross-project imports copy explicit Prompt / Skill, knowledge and model versions, never credentials or runs. Knowledge uses keyword retrieval; copied models start disabled.')+'</p></div><section class="panel panel-pad" style="margin-top:16px"><h2>'+label('全部项目','All projects')+'</h2><div class="space-list" style="margin-top:12px">'+rows+'</div><p class="small muted" style="margin-top:12px">'+label('归档保留所有历史。只有从未保存过数据的已归档项目可以删除。切换项目会停止本地执行并回到工作台。','Archiving preserves history. Only unused archived projects can be deleted. Switching stops local runs and returns to the dashboard.')+'</p></section>';
     }});
     S.action('project-create',()=>nameDialog(null));
     S.action('project-rename',safe(el=>{const item=list().find(x=>x.id===el.dataset.id);if(!item)fail('项目不存在');nameDialog(item);}));
@@ -129,10 +148,10 @@
     S.action('project-delete-confirm',safe(el=>{remove(el.dataset.id);refresh();}));
     S.action('project-import',safe(()=>{
       const items=list().filter(x=>!x.active&&!x.archived).flatMap(project=>importable(project.id).map(item=>({project,item})));
-      if(!items.length){S.toast(T('没有其他项目中可导入的 Prompt / Skill','No importable Prompt / Skill in other projects'),'info');return;}
-      S.modal({title:T('导入资源副本','Import resource copy'),subtitle:T('选择同一空间中的来源项目和固定版本，不会建立跨项目运行权限。','Choose a source project and version in this workspace. No runtime permissions are shared.'),body:'<div class="field"><label class="field-label" for="project-import-source">'+label('来源项目 / 资源 / 版本','Source project / resource / version')+'</label><select class="select" id="project-import-source">'+items.map(({project,item})=>'<option value="'+E(JSON.stringify([project.id,item.id,item.version]))+'">'+E(project.name+' / '+item.name+' / '+item.version)+'</option>').join('')+'</select></div>'+S.field(T('副本名称','Copy name'),{id:'project-import-name',placeholder:T('留空使用来源名称','Leave empty to use source name')}),footer:S.btn('取消','modal-close',{variant:'secondary'})+S.btn(T('导入副本','Import copy'),'project-import-confirm')});
+      if(!items.length){S.toast(T('其他项目中没有可导入的资源','No importable resources in other projects'),'info');return;}
+      S.modal({title:T('导入资源副本','Import resource copy'),subtitle:T('选择同一空间中的来源项目和固定版本，不会建立跨项目运行权限。','Choose a source project and version in this workspace. No runtime permissions are shared.'),body:'<div class="field"><label class="field-label" for="project-import-source">'+label('来源项目 / 资源 / 版本','Source project / resource / version')+'</label><select class="select" id="project-import-source">'+items.map(({project,item})=>'<option value="'+E(JSON.stringify([project.id,item.id,item.version,item.type]))+'">'+E(project.name+' / '+item.type+' / '+item.name+' / '+item.version)+'</option>').join('')+'</select></div>'+S.field(T('副本名称','Copy name'),{id:'project-import-name',placeholder:T('留空使用来源名称','Leave empty to use source name')}),footer:S.btn('取消','modal-close',{variant:'secondary'})+S.btn(T('导入副本','Import copy'),'project-import-confirm')});
     }));
-    S.action('project-import-confirm',safe(()=>{const values=JSON.parse(document.getElementById('project-import-source').value);const item=importContent(...values,document.getElementById('project-import-name').value.trim());S.closeModal();S.go('content-detail',{id:item.id});S.toast(T('已导入固定版本副本','Versioned copy imported'));}));
+    S.action('project-import-confirm',safe(()=>{const values=JSON.parse(document.getElementById('project-import-source').value);const item=importResource(...values,document.getElementById('project-import-name').value.trim());S.closeModal();S.go(item.route,{id:item.id});S.toast(T('已导入固定版本副本','Versioned copy imported'));}));
   }
-  window.StudioProjects = { read, list, active, create, rename, archive, canDelete, remove, switchTo, importable, importContent, storageKey, attach, DEFAULT_ID };
+  window.StudioProjects = { read, list, active, create, rename, archive, canDelete, remove, switchTo, importable, importContent, importResource, storageKey, attach, DEFAULT_ID };
 })();
