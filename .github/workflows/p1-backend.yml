@@ -82,6 +82,8 @@ jobs:
               raise RuntimeError("Mailpit readiness timeout")
           PY
           python3 backend/qa/iam-smoke.py
+          # Fail quickly on real navigation/history regressions before Runtime and fault tests.
+          node frontend/qa/p1-studio-matrix.mjs --navigation-only
           java -jar "$JAR" --spring.profiles.active=worker > worker.log 2>&1 &
           WORKER=$!
           for i in $(seq 1 40); do
@@ -96,6 +98,8 @@ jobs:
           java -jar "$JAR" --spring.profiles.active=worker >> worker.log 2>&1 &
           WORKER=$!
           kill -0 "$WORKER"
+          # Fresh browser process isolates route matrix from dirty navigation history.
+          node frontend/qa/p1-studio-matrix.mjs
           node frontend/qa/p1-browser-smoke.mjs
           # Execute the real JDBC rollover test only in this isolated integration database.
           PEACHAGENT_ISOLATED_FAULT_TEST=1 mvn -B -f backend/pom.xml -pl peachagent-bootstrap -am -Dtest=BudgetRolloverDatabaseTest -Dsurefire.failIfNoSpecifiedTests=false test
