@@ -1,0 +1,103 @@
+name: P1 protocol extension
+on:
+  pull_request:
+    paths:
+      - 'backend/peachagent-bootstrap/src/test/java/com/peachsoft/peachagent/integration/model/**'
+      - 'backend/qa/protocol-extension-fixture.py'
+      - 'frontend/qa/protocol-extension.mjs'
+      - '.github/workflows/p1-protocol-extension.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  extension:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      MYSQL_ROOT_PASSWORD: ci-only-root
+      DB_USER: peachagent
+      DB_PASSWORD: ci-only-db
+      REDIS_PASSWORD: ci-only-redis
+      DB_URL: jdbc:mysql://127.0.0.1:3306/peachagent
+      COOKIE_SECURE: 'false'
+      PEACHAGENT_ALLOWED_INTERNAL_ORIGINS: http://127.0.0.1:18081
+      PEACHAGENT_ISOLATED_PROTOCOL_TEST: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: backend/**/pom.xml
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build production jar and test classes
+        run: |
+          mvn -B -f backend/pom.xml -DskipTests package
+          JAR=backend/peachagent-bootstrap/target/peachagent-bootstrap-1.0.0-SNAPSHOT.jar
+          if jar tf "$JAR" | grep -q 'FixtureProtocolAdapter.class'; then
+            echo "Test protocol leaked into production jar"; exit 1
+          fi
+      - name: Build browser application
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          npx playwright install --with-deps chromium
+      - name: Start isolated middleware
+        run: docker compose -f compose.dev.yml up -d --wait mysql redis mailpit
+      - name: Test independent adapter end-to-end
+        run: |
+          set -euo pipefail
+          export CREDENTIAL_KEK="$(openssl rand -base64 32)"
+          echo "::add-mask::$CREDENTIAL_KEK"
+          JAR=backend/peachagent-bootstrap/target/peachagent-bootstrap-1.0.0-SNAPSHOT.jar
+          TEST_CLASSES="$(pwd)/backend/peachagent-bootstrap/target/test-classes"
+          test -f "$TEST_CLASSES/com/peachsoft/peachagent/integration/model/FixtureProtocolAdapter.class"
+          python3 backend/qa/protocol-extension-fixture.py > extension-fixture.log 2>&1 &
+          FIXTURE=$!
+          java -Dloader.path="$TEST_CLASSES/" -cp "$JAR" org.springframework.boot.loader.launch.PropertiesLauncher \
+            --spring.profiles.active=api,qa-protocol --spring.web.resources.static-locations="file:$(pwd)/frontend/dist/" > extension-api.log 2>&1 &
+          API=$!
+          trap 'kill "$API" "$FIXTURE" ${WORKER:-} 2>/dev/null || true; cat extension-api.log; test ! -f extension-worker.log || cat extension-worker.log' EXIT
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'; then break; fi
+            kill -0 "$API" "$FIXTURE"; sleep 1
+          done
+          curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'
+          curl -fsS http://127.0.0.1:18081/health | grep -q UP
+          python3 backend/qa/iam-smoke.py
+          java -Dloader.path="$TEST_CLASSES/" -cp "$JAR" org.springframework.boot.loader.launch.PropertiesLauncher \
+            --spring.profiles.active=worker,qa-protocol > extension-worker.log 2>&1 &
+          WORKER=$!
+          for i in $(seq 1 60); do
+            if grep -q 'Started PeachAgentApplication' extension-worker.log; then break; fi
+            kill -0 "$WORKER"; sleep 1
+          done
+          grep -q 'Started PeachAgentApplication' extension-worker.log
+          kill -0 "$API" "$WORKER" "$FIXTURE"
+          node frontend/qa/protocol-extension.mjs
+          docker compose -f compose.dev.yml exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql --batch --skip-column-names -u "$MYSQL_USER" "$MYSQL_DATABASE"' <<'SQL' > extension-ledger.txt
+          SELECT CONCAT_WS('|',PROTOCOL_KEY,PROTOCOL_VERSION,ADAPTER_KEY,ADAPTER_VERSION,STATUS,TOTAL_TOKENS) FROM RT_MODEL_CALL WHERE PROTOCOL_KEY='qa.native';
+          SELECT CONCAT_WS('|',COUNT(*),SUM(STATE='SETTLED'),SUM(CONCURRENCY_RELEASED)) FROM BUDGET_RESERVATION WHERE CALL_ID IN (SELECT ID FROM RT_MODEL_CALL WHERE PROTOCOL_KEY='qa.native');
+          SQL
+          grep -Fx 'qa.native|v1|qa.adapter|1.0.0|SUCCEEDED|6' extension-ledger.txt
+          grep -Fx '3|3|3' extension-ledger.txt
+          test "$(wc -l < extension-ledger.txt)" = 2
+          echo "PASS: adapter/protocol versions pinned, exactly one provider call and three settled budget reservations"
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p1-protocol-extension
+          path: |
+            frontend/qa/evidence/
+            extension-ledger.txt
+            extension-api.log
+            extension-worker.log
+          if-no-files-found: warn
+      - name: Cleanup
+        if: always()
+        run: docker compose -f compose.dev.yml down -v
