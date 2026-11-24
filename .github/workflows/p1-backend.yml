@@ -22,13 +22,13 @@ jobs:
           cache-dependency-path: backend/**/pom.xml
       - name: Compile and unit tests
         run: mvn -B -f backend/pom.xml verify
-      - name: Start real database and Redis
+      - name: Start real database, Redis and SMTP
         env:
           MYSQL_ROOT_PASSWORD: ci-only-root
           DB_USER: peachagent
           DB_PASSWORD: ci-only-db
           REDIS_PASSWORD: ci-only-redis
-        run: docker compose -f compose.dev.yml up -d --wait mysql redis
+        run: docker compose -f compose.dev.yml up -d --wait mysql redis mailpit
       - name: Verify API and worker startup
         env:
           DB_URL: jdbc:mysql://127.0.0.1:3306/peachagent
