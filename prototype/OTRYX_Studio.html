@@ -496,7 +496,112 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   '当前空间':'Current workspace','默认空间':'Default workspace','演示空间':'Demo workspace',
   '空间名称':'Workspace name','新增工作空间':'New workspace',
   '演示账号':'Demo account','演示密码':'Demo password','填入演示账号':'Use demo credentials',
-  '复制':'Copy','账户':'Account'
+  '复制':'Copy','账户':'Account',
+  "项目管理":"Projects",
+  "凭证中心":"Credentials",
+  "待办与审批":"Inbox & approvals",
+  "任务计划":"Task plans",
+  "智能体工作台":"Agent workspace",
+  "Agent Chat":"Agent Chat",
+  "资源审核":"Resource reviews",
+  "应用服务":"Applications",
+  "默认项目":"Default project",
+  "当前项目":"Current project",
+  "创建项目":"Create project",
+  "项目名称":"Project name",
+  "归档":"Archive",
+  "恢复":"Restore",
+  "重命名":"Rename",
+  "已归档":"Archived",
+  "已撤销":"Revoked",
+  "有效":"Active",
+  "查看详情":"View details",
+  "查看并处理":"Review",
+  "开始审核":"Review submission",
+  "绑定连接":"Bind connection",
+  "添加凭证引用":"Add credential reference",
+  "凭证引用":"Credential reference",
+  "验证":"Verify",
+  "轮换":"Rotate",
+  "撤销":"Revoke",
+  "运行审批":"Run approvals",
+  "API Key 申请":"API Key requests",
+  "公共资源审核":"Public resource reviews",
+  "全部":"All",
+  "待审核":"Pending review",
+  "已通过":"Approved",
+  "已退回":"Rejected",
+  "草稿":"Draft",
+  "已发布":"Published",
+  "已启用":"Enabled",
+  "已停用":"Disabled",
+  "启用":"Enable",
+  "停用":"Disable",
+  "已安装":"Installed",
+  "安装":"Install",
+  "卸载":"Uninstall",
+  "配置":"Configure",
+  "管理":"Manage",
+  "刷新":"Refresh",
+  "复制链接":"Copy link",
+  "导入":"Import",
+  "导出":"Export",
+  "保存草稿":"Save draft",
+  "发布版本":"Publish version",
+  "发布为服务":"Publish as service",
+  "新会话":"New chat",
+  "历史会话":"Chat history",
+  "发送":"Send",
+  "停止":"Stop",
+  "继续":"Continue",
+  "添加":"Add",
+  "选择":"Select",
+  "名称":"Name",
+  "描述":"Description",
+  "对话模型":"Chat model",
+  "配置连接":"Configure connection",
+  "添加连接":"Add connection",
+  "添加模型":"Add model",
+  "模型实例":"Model instances",
+  "服务商连接":"Provider connections",
+  "默认用途":"Defaults",
+  "工具选择":"Tool selection",
+  "资源分类":"Resource type",
+  "页面筛选":"Page filters",
+  "打开导航":"Open navigation",
+  "关闭导航":"Close navigation",
+  "关闭对话框":"Close dialog",
+  "搜索页面与资源":"Search pages and resources",
+  "查看待办通知":"Open inbox",
+  "查看用量明细":"View usage details",
+  "清除搜索":"Clear search",
+  "工作空间页面":"Workspace pages",
+  "主导航":"Main navigation",
+  "跳转到主要内容":"Skip to main content",
+  "发送消息":"Send message",
+  "配置智能体":"Configure agent",
+  "打开工作空间":"Open workspace",
+  "管理员 · 演示角色":"Administrator · demo role",
+  "显示":"Show",
+  "隐藏":"Hide",
+  "输入你的密码":"Enter password",
+  "至少 8 个字符":"At least 8 characters",
+  "再次输入密码":"Re-enter password",
+  "设置新密码":"Set new password",
+  "继续你的应用、工作流和运行记录。":"Continue building apps and workflows and reviewing runs.",
+  "为你的应用建立一个独立的工作空间。":"Create a separate workspace for your apps.",
+  "使用当前浏览器的演示流程重新设置密码。":"Reset the local demo password in this browser.",
+  "完成后，请使用新密码重新登录。":"Sign in again using the new password.",
+  "在同一个空间里构建智能体、编排工作流，":"Build agents and workflows in one workspace,",
+  "让每一次调用都可配置、可追踪、可改进。":"Make each invocation configurable, traceable and improvable.",
+  "配置模型、工具和协作方式。":"Configure models, tools and collaboration.",
+  "从节点传参到分支执行，逐步调试。":"Debug node inputs and branch execution step by step.",
+  "发布应用与 API，持续检查质量。":"Publish apps and APIs and monitor quality.",
+  "你的内容，保存在当前浏览器。":"Your content stays in this browser.",
+  "账户之间使用独立工作空间。":"Accounts have separate workspaces.",
+  "本地演示账户 · 不连接身份服务 · 不发送邮件":"Local demo account · No identity service · No email sent",
+  "已有账户？登录":"Already have an account? Sign in",
+  "导入资源副本":"Import resource copy"
  };
  let theme='editorial-light',locale='zh-CN', studio=null;
  try{
@@ -519,26 +624,23 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   });
  }
  function localize(root=document){
-  if(locale==='en-US'){
-   const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
-   const nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);
-   nodes.forEach(node=>{
-    if(node.parentElement?.closest('script,style,textarea,pre,code,kbd,[contenteditable],[data-no-i18n],[data-chrome="space-name"],[data-chrome="account-name"],[data-chrome="space-initial"],[data-chrome="initials"],.mono,.code-editor,.auth-credential-demo'))return;
-    const raw=node.nodeValue,trimmed=raw.trim();
-    if(labels[trimmed])node.nodeValue=raw.replace(trimmed,labels[trimmed]);
-   });
-   root.querySelectorAll('input[placeholder],textarea[placeholder]').forEach(el=>{
-    if(labels[el.placeholder])el.placeholder=labels[el.placeholder];
-   });
-  }else{
-   const inverse=Object.fromEntries(Object.entries(labels).map(([zh,en])=>[en,zh]));
-   const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
-   const nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);
-   nodes.forEach(node=>{
-    if(node.parentElement?.closest('script,style,textarea,pre,code,kbd,[contenteditable],[data-no-i18n],[data-chrome="space-name"],[data-chrome="account-name"],[data-chrome="space-initial"],[data-chrome="initials"],.mono,.code-editor,.auth-credential-demo'))return;
-    const raw=node.nodeValue,trimmed=raw.trim();if(inverse[trimmed])node.nodeValue=raw.replace(trimmed,inverse[trimmed]);
-   });
-  }
+  if(!root?.querySelectorAll)return;
+  // Only opt-in UI elements and known static shell/auth labels. Never traverse
+  // arbitrary business data (resource names, chat text, knowledge or JSON).
+  const fixed='[data-i18n],.nav-label,[data-nav]>span:not([data-nav-count]),.auth-step-label,.auth-feature-list strong,.auth-feature-list span,.auth-switch a,.auth-back,.auth-divider span,.auth-prototype-label,.auth-credential-demo .credential-label,.crumb-home,.demo-badge,.sidebar-status .small:not([data-chrome]),.space-copy small,.auth-footer span';
+  root.querySelectorAll(fixed).forEach(el=>{
+   if(el.closest?.('[data-no-i18n]')||el.children.length)return;
+   const source=el.getAttribute('data-i18n')||el.getAttribute('data-i18n-source')||el.textContent.trim();
+   if(!Object.prototype.hasOwnProperty.call(labels,source))return;
+   el.setAttribute('data-i18n-source',source);el.textContent=t(source);
+  });
+  root.querySelectorAll('[data-i18n-aria-label],[data-i18n-title],[data-i18n-placeholder]').forEach(el=>{
+   if(el.closest?.('[data-no-i18n]'))return;
+   for(const attr of ['aria-label','title','placeholder']){
+    const source=el.getAttribute('data-i18n-'+attr);
+    if(source)el.setAttribute(attr,t(source));
+   }
+  });
   updateChrome();
  }
  function setTheme(next){
@@ -547,8 +649,8 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content',getComputedStyle(document.documentElement).getPropertyValue('--bg-app').trim());
   persist();updateChrome();return true;
  }
- function hasUncommittedInput(){
-  if(studio?.dirty||document.getElementById?.('app-dialog')?.open)return true;
+ function hasUncommittedInput(includeDialog=true){
+  if(studio?.dirty||(includeDialog&&document.getElementById?.('app-dialog')?.open))return true;
   return Array.from(document.querySelectorAll('#page-content form input, #page-content form textarea, #page-content form select')).some(el=>{
    if(el.disabled||['hidden','button','submit'].includes(el.type))return false;
    if(el.type==='checkbox'||el.type==='radio')return el.checked!==el.defaultChecked;
@@ -564,7 +666,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   if(next===locale)return true;
   if(hasUncommittedInput()){studio?.toast(locale==='zh-CN'?'请先保存或放弃当前编辑，关闭弹窗后再切换语言。':'Save or discard your edits and close the dialog before changing language.','warning');return false;}
   locale=next;document.documentElement.lang=next;persist();
-  if(studio){studio.closeModal?.();studio.render();} else location.reload();
+  if(studio){studio.closeModal?.();studio.render();localize(document);} else location.reload();
   updateChrome();return true;
  }
  function controls(){
@@ -589,7 +691,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   S.action('appearance-select',el=>{setTheme(el.dataset.themeValue);S.closeModal();S.toast(locale==='zh-CN'?'主题已更新':'Theme updated');});
   S.action('appearance-locale',()=>setLocale(locale==='zh-CN'?'en-US':'zh-CN'));
  }
- window.StudioAppearance={attach,setTheme,setLocale,localize,controls,getTheme:()=>theme,getLocale:()=>locale,t,themes,labels};
+ window.StudioAppearance={attach,setTheme,setLocale,localize,hasUncommittedInput,controls,getTheme:()=>theme,getLocale:()=>locale,t,themes,labels};
 })();
 
 </script>
@@ -621,9 +723,9 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
    try{const legacy=safeParse(localStorage.getItem(storageKey(id,DEFAULT_ID)));const name=legacy?.spaceName||legacy?.gov?.preferences?.name;if(typeof name==='string'&&name.trim()&&name.trim().length<=42)defaults.spaces[0].name=name.trim();}catch(_){}
    return defaults;
   }
-  const spaces=stored.spaces.filter(s=>s&&s.id===DEFAULT_ID||s&&/^space-[a-f0-9]{24}$/.test(s.id)).filter(s=>typeof s.name==='string'&&s.name.length>0&&s.name.length<=42).slice(0,MAX_SPACES).map(s=>({id:s.id,name:s.name,createdAt:Number(s.createdAt)||0}));
+  const spaces=stored.spaces.filter(s=>s&&s.id===DEFAULT_ID||s&&/^space-[a-f0-9]{24}$/.test(s.id)).filter(s=>typeof s.name==='string'&&s.name.length>0&&s.name.length<=42).slice(0,MAX_SPACES).map(s=>({id:s.id,name:s.name,createdAt:Number(s.createdAt)||0,archived:s.id!==DEFAULT_ID&&!!s.archived}));
   if(!spaces.some(s=>s.id===DEFAULT_ID))spaces.unshift(defaults.spaces[0]);
-  return {version:1,active:spaces.some(s=>s.id===stored.active)?stored.active:DEFAULT_ID,spaces};
+  return {version:1,active:spaces.some(s=>s.id===stored.active&&!s.archived)?stored.active:DEFAULT_ID,spaces};
  }
  function write(id,state){
   localStorage.setItem(key(id),JSON.stringify(state));
@@ -673,27 +775,46 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
  function switchTo(spaceId){
   const id=owner();if(!id)throw new Error('请先登录账户');
   const state=read(id);
-  if(!state.spaces.some(s=>s.id===spaceId))throw new Error('工作空间不存在');
+  if(!state.spaces.some(s=>s.id===spaceId&&!s.archived))throw new Error('工作空间不存在或已归档');
   if(state.active===spaceId)return false;
   const studio=window.Studio;
-  if(studio?.dirty)throw new Error('请先保存或放弃当前编辑，再切换工作空间');
+  if(studio?.dirty||window.StudioAppearance?.hasUncommittedInput?.(false))throw new Error('请先保存或放弃当前编辑，再切换工作空间');
   // Keep the previous account/space captured in core.js until the reload.
   if(studio&&studio.save()===false)throw new Error('无法保存当前工作空间，请先导出备份');
   if(studio&&window.StudioAuth.stopWorkspace('space-switch')===false)throw new Error('本地任务已停止，但保存未完成；仍在原空间，请导出备份后重试。');
   state.active=spaceId;
   try{write(id,state);}catch(error){throw new Error('本地任务已停止，但空间切换未保存；仍在原空间，请检查浏览器存储后重试。',{cause:error});}
+  location.hash='#home';
   location.reload();
   return true;
+ }
+ function archive(spaceId,archived=true){
+  const id=owner();if(!id)throw new Error('请先登录账户');
+  const state=read(id),target=state.spaces.find(s=>s.id===spaceId);
+  if(!target||spaceId===DEFAULT_ID||spaceId===state.active)throw new Error('默认空间和当前空间不能归档，请先切换空间');
+  target.archived=!!archived;write(id,state);return target;
+ }
+ function canDelete(spaceId){
+  const id=owner();if(!id)return false;
+  const state=read(id),target=state.spaces.find(s=>s.id===spaceId);
+  try{return !!target?.archived&&spaceId!==DEFAULT_ID&&spaceId!==state.active&&localStorage.getItem(storageKey(id,spaceId))===null&&localStorage.getItem('peachagent-projects-v1::'+id+'::'+spaceId)===null;}catch(_){return false;}
+ }
+ function remove(spaceId){
+  if(!canDelete(spaceId))throw new Error('只能删除没有项目目录和已保存数据的归档空间');
+  const id=owner(),state=read(id);state.spaces=state.spaces.filter(s=>s.id!==spaceId);write(id,state);
  }
  function attach(S){
   const show=()=>{
    const current=active();if(!current)return;
    const esc=S.escape;
-   const rows=list().map(s=>'<div class="space-choice'+(s.active?' active':'')+'"><button type="button" class="space-info" data-action="space-open" data-id="'+esc(s.id)+'" '+(s.active?'disabled':'')+'><strong data-no-i18n>'+esc(s.name)+'</strong><small>'+(s.active?'当前空间':s.id===DEFAULT_ID?'默认空间':'独立空间')+'</small></button><button type="button" class="btn btn-ghost btn-sm" data-action="space-rename" data-id="'+esc(s.id)+'">重命名</button></div>').join('');
+   const rows=list().map(s=>'<div class="space-choice'+(s.active?' active':'')+'"><button type="button" class="space-info" data-action="space-open" data-id="'+esc(s.id)+'" '+(s.active||s.archived?'disabled':'')+'><strong data-no-i18n>'+esc(s.name)+'</strong><small>'+(s.active?'当前空间':s.archived?'已归档':s.id===DEFAULT_ID?'默认空间':'独立空间')+'</small></button><button type="button" class="btn btn-ghost btn-sm" data-action="space-rename" data-id="'+esc(s.id)+'">重命名</button>'+(s.id!==DEFAULT_ID&&!s.active?S.btn(s.archived?'恢复':'归档','space-archive',{small:true,variant:'secondary',attrs:'data-id="'+esc(s.id)+'"'}) :'')+(s.archived&&canDelete(s.id)?S.btn('删除空空间','space-delete',{small:true,variant:'danger',attrs:'data-id="'+esc(s.id)+'"'}) :'')+'</div>').join('');
    S.modal({title:'切换工作空间',subtitle:'每个空间的智能体、模型、任务与评测数据独立保存在当前浏览器。',body:'<div class="space-list">'+rows+'</div><p class="small muted" style="margin-top:16px">本地原型不包含云端同步、协作成员或真正的多租户授权。</p>',footer:S.btn('关闭','modal-close',{variant:'secondary'})+S.btn('创建空间','space-create',{icon:'plus'})});
    window.StudioAppearance?.localize(document.getElementById('app-dialog'));
   };
   S.action('space-manager',show);
+  S.action('space-archive',el=>{try{const item=list().find(s=>s.id===el.dataset.id);archive(item.id,!item.archived);show();}catch(error){S.toast(error.message,'warning');}});
+  S.action('space-delete',el=>S.modal({title:'删除空工作空间？',subtitle:'仅删除未保存项目和业务数据的归档空间目录项。',footer:S.btn('取消','modal-close',{variant:'secondary'})+S.btn('删除','space-delete-confirm',{variant:'danger',attrs:'data-id="'+S.escape(el.dataset.id)+'"'})}));
+  S.action('space-delete-confirm',el=>{try{remove(el.dataset.id);show();}catch(error){S.toast(error.message,'warning');}});
   S.action('space-create',()=>{
    S.modal({title:'创建空间',subtitle:'创建后可在左上角切换。新空间从独立的示例数据开始。',body:S.field('空间名称',{id:'new-space-name',name:'name',placeholder:'例如：产品研发',required:true}),footer:S.btn('取消','modal-close',{variant:'secondary'})+S.btn('创建空间','space-create-confirm')});
    document.getElementById('new-space-name')?.focus();
@@ -718,7 +839,168 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
    catch(error){S.toast(error.message,'error');}
   });
  }
- window.StudioSpaces={owner,read,active,list,create,rename,switchTo,storageKey,attach,DEFAULT_ID};
+ window.StudioSpaces={owner,read,active,list,create,rename,archive,canDelete,remove,switchTo,storageKey,attach,DEFAULT_ID};
+})();
+
+</script>
+  <script>
+/* projects.js */
+(function () {
+  'use strict';
+  const DEFAULT_ID = 'default', LIMIT = 30;
+  const space = () => window.StudioSpaces?.active();
+  const fail = message => { throw new Error(message); };
+  const registryKey = current => 'peachagent-projects-v1::' + current.owner + '::' + current.id;
+  const storageKey = (current, id) => current.storageKey + (id === DEFAULT_ID ? '' : '::project::' + id);
+  const nameOf = value => {
+    const name = String(value || '').trim();
+    if (!name || name.length > 60) fail('项目名称须为 1–60 个字符');
+    return name;
+  };
+  function read(current = space()) {
+    if (!current) return null;
+    const initial = { schema: 1, active: DEFAULT_ID, items: [{ id: DEFAULT_ID, name: '默认项目', archived: false, createdAt: 0 }] };
+    let raw;
+    try { raw = localStorage.getItem(registryKey(current)); } catch (_) { return initial; }
+    if (!raw) return initial;
+    let saved;
+    try { saved = JSON.parse(raw); } catch (_) { fail('项目目录已损坏，请先备份浏览器数据'); }
+    if (saved?.schema !== 1 || !Array.isArray(saved.items)) fail('项目目录版本不受支持');
+    const ids = new Set();
+    const items = saved.items.filter(item => {
+      if (!item || !/^(default|project-[a-f0-9]{24})$/.test(item.id) || typeof item.name !== 'string' || !item.name.trim() || item.name.length > 60 || ids.has(item.id)) return false;
+      ids.add(item.id); return true;
+    }).map(item => ({ id: item.id, name: item.name, archived: item.id !== DEFAULT_ID && !!item.archived, createdAt: Number(item.createdAt) || 0 }));
+    if (!ids.has(DEFAULT_ID)) items.unshift(initial.items[0]);
+    return { schema: 1, active: items.some(item => item.id === saved.active && !item.archived) ? saved.active : DEFAULT_ID, items };
+  }
+  function save(current, registry) { localStorage.setItem(registryKey(current), JSON.stringify(registry)); }
+  function required() { const current = space(); if (!current) fail('请先登录并选择工作空间'); return current; }
+  function list() { const r = read(); return r ? r.items.map(item => ({ ...item, active: item.id === r.active })) : []; }
+  function active() {
+    const current = space(); if (!current) return null;
+    const r = read(current), item = r.items.find(x => x.id === r.active);
+    return { ...item, spaceId: current.id, storageKey: storageKey(current, item.id) };
+  }
+  function create(value) {
+    const current = required(), r = read(current), name = nameOf(value);
+    if (r.items.length >= LIMIT) fail('每个本地空间最多支持 30 个项目');
+    if (r.items.some(item => item.name === name)) fail('项目名称已存在');
+    const bytes = new Uint8Array(12); window.crypto.getRandomValues(bytes);
+    const item = { id: 'project-' + Array.from(bytes, n => n.toString(16).padStart(2, '0')).join(''), name, archived: false, createdAt: Date.now() };
+    r.items.push(item); save(current, r); return item;
+  }
+  function rename(id, value) {
+    const current = required(), r = read(current), item = r.items.find(x => x.id === id), name = nameOf(value);
+    if (!item) fail('项目不存在');
+    if (r.items.some(x => x.id !== id && x.name === name)) fail('项目名称已存在');
+    item.name = name; save(current, r); return item;
+  }
+  function archive(id, archived = true) {
+    const current = required(), r = read(current), item = r.items.find(x => x.id === id);
+    if (!item || id === DEFAULT_ID || id === r.active) fail('默认项目和当前项目不能归档，请先切换项目');
+    item.archived = !!archived; save(current, r); return item;
+  }
+  function canDelete(id) {
+    const current = required(), r = read(current), item = r.items.find(x => x.id === id);
+    try { return !!item?.archived && id !== r.active && id !== DEFAULT_ID && localStorage.getItem(storageKey(current, id)) === null; } catch (_) { return false; }
+  }
+  function remove(id) {
+    if (!canDelete(id)) fail('只能删除从未保存过数据的已归档项目；其他项目保留历史记录');
+    const current = required(), r = read(current);
+    r.items = r.items.filter(x => x.id !== id); save(current, r);
+  }
+  function switchTo(id) {
+    const current = required(), r = read(current);
+    if (!r.items.some(x => x.id === id && !x.archived)) fail('项目不存在或已归档');
+    if (r.active === id) return false;
+    const S = window.Studio;
+    if (S?.dirty || window.StudioAppearance?.hasUncommittedInput?.(false)) fail('请先保存或放弃当前编辑');
+    if (S && S.save() === false) fail('无法保存当前项目，请先导出备份');
+    if (S && window.StudioAuth.stopWorkspace('project-switch') === false) fail('任务停止后保存未完成，仍在原项目');
+    r.active = id;
+    try { save(current, r); } catch (_) { fail('项目切换未保存，仍在原项目；已停止的任务不会自动恢复'); }
+    location.hash = '#home'; location.reload(); return true;
+  }
+  function sourceState(projectId) {
+    const current = required(), r = read(current), source = r.items.find(x => x.id === projectId && !x.archived && x.id !== r.active);
+    if (!source) fail('来源项目不存在、已归档或为当前项目');
+    try { return JSON.parse(localStorage.getItem(storageKey(current, source.id)) || 'null'); } catch (_) { fail('来源项目数据无法读取'); }
+  }
+  function importable(projectId) {
+    const data = sourceState(projectId);
+    const entries=(data?.contentStore?.contents || []).filter(item => ['prompt', 'skill'].includes(item.type) && item.status !== 'archived' && item.version).map(item => ({ id: item.id, name: item.name, type: item.type, version: String(item.version) }));
+    for(const item of data?.contentStore?.knowledge||[])if(item.status!=='archived'&&item.version)entries.push({id:item.id,name:item.name,type:'knowledge',version:String(item.version)});
+    for(const item of data?.modelRegistry?.models||[]){const provider=data.modelRegistry.providers?.find(p=>p.id===item.providerId&&!p.archived);if(!item.archived&&provider)entries.push({id:item.id,name:item.name,type:'model',version:String(item.revision)+'/'+String(provider.revision)});}
+    return entries;
+  }
+  function importContent(projectId, itemId, version, name) {
+    const allowed = importable(projectId).find(item => item.id === itemId && item.version === version);
+    if (!allowed) fail('来源版本已变化，请重新选择');
+    const item = sourceState(projectId)?.contentStore?.contents?.find(x => x.id === itemId && x.version === version);
+    if (!item) fail('来源版本不存在');
+    const S = window.Studio;
+    return S.ContentStore.saveContent({ type: item.type, name: name || item.name, content: item.content, description: item.description, tags: item.tags, dependencies: item.dependencies, origin: { projectId, resourceId: itemId, version } });
+  }
+  function importResource(projectId,itemId,version,type,name) {
+    const allowed=importable(projectId).find(item=>item.id===itemId&&item.type===type&&item.version===version);
+    if(!allowed)fail('来源资源或版本已变化，请重新选择');
+    const state=sourceState(projectId),S=window.Studio,origin={projectId,resourceId:itemId,version};
+    if(type==='knowledge'){
+      const item=state.contentStore.knowledge.find(x=>x.id===itemId&&String(x.version)===version);
+      if(!item)fail('来源知识库版本不存在');
+      return {route:'knowledge',id:S.ContentStore.importKnowledgeSnapshot(item,name,origin).id};
+    }
+    if(type==='model'){
+      const item=state.modelRegistry.models.find(x=>x.id===itemId),provider=state.modelRegistry.providers.find(x=>x.id===item?.providerId);
+      if(!item||!provider||String(item.revision)+'/'+String(provider.revision)!==version)fail('来源模型版本不存在');
+      return {route:'models',id:S.Models.importTemplate(item,provider,name,origin).id};
+    }
+    return {route:'content-detail',id:importContent(projectId,itemId,version,name).id};
+  }
+  function attach(S) {
+    const E = S.escape, T = (zh, en) => window.StudioAppearance?.getLocale() === 'en-US' ? en : zh;
+    const attr = id => 'data-id="' + E(id) + '"';
+    const safe = fn => el => { try { return fn(el); } catch (error) { S.toast(error.message, 'warning'); } };
+    const label = (zh, en) => E(T(zh,en));
+    const link = (route, title, count) => '<a class="btn btn-secondary" href="#' + route + '">' + E(title) + ' · ' + count + '</a>';
+    const summary = () => [
+      ['agents',T('智能体','Agents'),S.state.agents?.length || 0],['workflows',T('工作流','Workflows'),S.Runtime?.flows.length || 0],
+      ['models',T('模型','Models'),S.Models?.list().length || 0],['capabilities',T('工具连接','Tool connections'),S.Runtime?.connections.length || 0],
+      ['knowledge',T('知识库','Knowledge'),S.ContentStore?.listKnowledge().length || 0],['library',T('Prompt / Skill','Prompts / Skills'),S.ContentStore?.listContent().length || 0],
+      ['quality',T('质量评测','Evaluations'),S.Quality?.datasets?.length || S.state.qualityData?.datasets?.length || 0],['tasks',T('运行','Runs'),S.state.runs?.length || 0]
+    ].map(([route,title,count]) => link(route,title,count)).join('');
+    function refresh() { S.closeModal(); S.render(); }
+    function nameDialog(item) {
+      S.modal({title: item ? T('重命名项目','Rename project') : T('创建项目','Create project'), subtitle:T('新项目从独立的示例数据开始，切换后不会沿用其他项目的配置。','New projects start with separate sample data.'), body:S.field(T('项目名称','Project name'),{id:'project-name-input',name:'name',value:item?.name||'',required:true}), footer:S.btn('取消','modal-close',{variant:'secondary'})+S.btn('保存','project-name-save',{attrs:attr(item?.id||'')})});
+      document.getElementById('project-name-input')?.focus();
+    }
+    S.page('projects',{title:'项目管理',section:'构建与发布',render(){
+      const current = active(), items = list();
+      if (!current) return S.empty(T('请先登录','Sign in first'),T('登录后维护项目。','Sign in to manage projects.'));
+      const rows = items.map(item => '<div class="space-choice' + (item.active?' active':'') + '"><div class="space-info"><strong data-no-i18n>'+E(item.name)+'</strong><small>'+label(item.active?'当前项目':item.archived?'已归档':item.id===DEFAULT_ID?'默认项目':'独立项目',item.active?'Current project':item.archived?'Archived':item.id===DEFAULT_ID?'Default project':'Independent project')+'</small></div><div class="row" style="flex-wrap:wrap">'+
+        (!item.active&&!item.archived?S.btn(T('切换','Switch'),'project-switch',{small:true,attrs:attr(item.id)}):'')+
+        S.btn(T('重命名','Rename'),'project-rename',{small:true,variant:'ghost',attrs:attr(item.id)})+
+        (item.id!==DEFAULT_ID&&!item.active?S.btn(item.archived?T('恢复','Restore'):T('归档','Archive'),'project-archive',{small:true,variant:'secondary',attrs:attr(item.id)}):'')+
+        (item.archived&&canDelete(item.id)?S.btn(T('删除空项目','Delete empty project'),'project-delete',{small:true,variant:'danger',attrs:attr(item.id)}):'')+'</div></div>').join('');
+      return S.header('PROJECTS',T('项目管理','Projects'),T('在当前工作空间内组织独立的应用、资源和运行记录。','Organize independent apps, resources and runs in this workspace.'),S.btn(T('创建项目','Create project'),'project-create',{icon:'plus'}))+
+        '<div class="panel panel-pad"><div class="between"><div><h2>'+label('当前项目','Current project')+'</h2><p data-no-i18n class="muted">'+E(current.name)+'</p></div>'+S.btn(T('导入资源副本','Import resource copy'),'project-import',{variant:'secondary',icon:'download'})+'</div><div class="row" style="flex-wrap:wrap;margin-top:16px">'+summary()+'</div><p class="small muted" style="margin-top:12px">'+label('模型、工具、知识和内容在项目内通过原有管理页维护；跨项目显式复制 Prompt / Skill、知识库及模型的固定版本；不复制凭证或任务。知识库重置检索模型，模型副本默认停用。','Manage models, tools, knowledge and content in their original pages. Cross-project imports copy explicit Prompt / Skill, knowledge and model versions, never credentials or runs. Knowledge uses keyword retrieval; copied models start disabled.')+'</p></div><section class="panel panel-pad" style="margin-top:16px"><h2>'+label('全部项目','All projects')+'</h2><div class="space-list" style="margin-top:12px">'+rows+'</div><p class="small muted" style="margin-top:12px">'+label('归档保留所有历史。只有从未保存过数据的已归档项目可以删除。切换项目会停止本地执行并回到工作台。','Archiving preserves history. Only unused archived projects can be deleted. Switching stops local runs and returns to the dashboard.')+'</p></section>';
+    }});
+    S.action('project-create',()=>nameDialog(null));
+    S.action('project-rename',safe(el=>{const item=list().find(x=>x.id===el.dataset.id);if(!item)fail('项目不存在');nameDialog(item);}));
+    S.action('project-name-save',safe(el=>{const value=document.getElementById('project-name-input')?.value;el.dataset.id?rename(el.dataset.id,value):create(value);refresh();S.toast(T('项目已保存','Project saved'));}));
+    S.action('project-switch',safe(el=>switchTo(el.dataset.id)));
+    S.action('project-archive',safe(el=>{const item=list().find(x=>x.id===el.dataset.id);if(!item)fail('项目不存在');archive(item.id,!item.archived);refresh();}));
+    S.action('project-delete',safe(el=>{const id=el.dataset.id;S.modal({title:T('删除空项目？','Delete empty project?'),subtitle:T('仅删除从未保存数据的项目目录项。','Only the unused registry entry will be removed.'),footer:S.btn('取消','modal-close',{variant:'secondary'})+S.btn('删除','project-delete-confirm',{variant:'danger',attrs:attr(id)})});}));
+    S.action('project-delete-confirm',safe(el=>{remove(el.dataset.id);refresh();}));
+    S.action('project-import',safe(()=>{
+      const items=list().filter(x=>!x.active&&!x.archived).flatMap(project=>importable(project.id).map(item=>({project,item})));
+      if(!items.length){S.toast(T('其他项目中没有可导入的资源','No importable resources in other projects'),'info');return;}
+      S.modal({title:T('导入资源副本','Import resource copy'),subtitle:T('选择同一空间中的来源项目和固定版本，不会建立跨项目运行权限。','Choose a source project and version in this workspace. No runtime permissions are shared.'),body:'<div class="field"><label class="field-label" for="project-import-source">'+label('来源项目 / 资源 / 版本','Source project / resource / version')+'</label><select class="select" id="project-import-source">'+items.map(({project,item})=>'<option value="'+E(JSON.stringify([project.id,item.id,item.version,item.type]))+'">'+E(project.name+' / '+item.type+' / '+item.name+' / '+item.version)+'</option>').join('')+'</select></div>'+S.field(T('副本名称','Copy name'),{id:'project-import-name',placeholder:T('留空使用来源名称','Leave empty to use source name')}),footer:S.btn('取消','modal-close',{variant:'secondary'})+S.btn(T('导入副本','Import copy'),'project-import-confirm')});
+    }));
+    S.action('project-import-confirm',safe(()=>{const values=JSON.parse(document.getElementById('project-import-source').value);const item=importResource(...values,document.getElementById('project-import-name').value.trim());S.closeModal();S.go(item.route,{id:item.id});S.toast(T('已导入固定版本副本','Versioned copy imported'));}));
+  }
+  window.StudioProjects = { read, list, active, create, rename, archive, canDelete, remove, switchTo, importable, importContent, importResource, storageKey, attach, DEFAULT_ID };
 })();
 
 </script>
@@ -911,7 +1193,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
 
   function workspaceStorageKey() {
     const session = getSession();
-    return window.StudioSpaces?.active()?.storageKey || (session && !session.isDemo ? 'otryx-studio-workspace::' + session.accountId : LEGACY_WORKSPACE);
+    return window.StudioProjects?.active()?.storageKey || window.StudioSpaces?.active()?.storageKey || (session && !session.isDemo ? 'otryx-studio-workspace::' + session.accountId : LEGACY_WORKSPACE);
   }
 
   function safeReturnHash(value) {
@@ -938,7 +1220,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
     if (!studio || workspaceStopping) return false;
     workspaceStopping = true;
     try {
-      try { studio.Planning?.stopAll?.(reason); } catch (error) { if (reason === 'space-switch') throw error; /* Individual runs are stopped below as well. */ }
+      try { studio.Planning?.stopAll?.(reason); } catch (error) { if (reason === 'space-switch' || reason === 'project-switch') throw error; /* Individual runs are stopped below as well. */ }
       for (const experiment of studio.state.qualityData?.experiments || []) {
         if (experiment.status === 'running') studio.Quality?.stopExperiment(experiment.id);
       }
@@ -952,7 +1234,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
           run.duration = run.finishedAt - (run.created || run.finishedAt);
           run.pending = null;
           run.pendingQueue = [];
-          run.stopReason = reason === 'space-switch' ? '切换空间，已停止本地执行。' : '登录会话结束，已停止本地执行。';
+          run.stopReason = reason === 'space-switch' ? '切换空间，已停止本地执行。' : reason === 'project-switch' ? '切换项目，已停止本地执行。' : '登录会话结束，已停止本地执行。';
         }
       }
       studio.Publishing?.clearSession();
@@ -1094,7 +1376,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   }
 
   function logout(options = {}) {
-    if (studio?.dirty && !options.force) {
+    if ((studio?.dirty || window.StudioAppearance?.hasUncommittedInput?.(false)) && !options.force) {
       studio.modal({ title: '退出前处理未保存的修改', subtitle: '已保存的工作空间内容会保留。当前未保存的编辑将在退出后丢失。', body: '<div class="notice warning">正在执行的本地任务也会停止。重新登录后可查看已有运行记录。</div>', footer: studio.btn('继续编辑', 'modal-close', { variant: 'secondary' }) + studio.btn('放弃修改并退出', 'auth-confirm-logout', { variant: 'danger' }) });
       return false;
     }
@@ -1139,21 +1421,22 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
     studio.modal({ title: session.name, subtitle: demo ? '公共演示空间 · 当前浏览器' : session.email, body: `<div class="auth-account-summary"><span class="avatar">${studio.icon(demo ? 'play' : 'users', 21)}</span><div><strong>${demo ? '演示空间' : '个人工作空间'}</strong><p>${demo ? '保留原有示例和你的演示修改。' : '内容按本地账户分别保存。'}</p></div></div><div class="notice">${demo ? '此空间不需要注册。创建本地账户后，将进入独立空间，演示内容不会迁入。' : '这是当前浏览器的本地演示账户，不是云端账号，也不会同步到其他设备。'}</div><dl class="auth-account-details"><div><dt>登录有效期</dt><dd>${studio.escape(expiry)}（北京时间）</dd></div><div><dt>会话方式</dt><dd>${session.remember ? '记住登录 · 最长 7 天' : '当前浏览器会话 · 最长 12 小时'}</dd></div></dl>${demo && studio.actions['role-member'] ? `<div class="auth-role-options">${studio.btn('个人空间视角', 'role-member', { variant: 'secondary', small: true })}${studio.btn('管理员演示', 'role-admin', { variant: 'secondary', small: true })}</div>` : ''}`, footer: studio.btn('关闭', 'modal-close', { variant: 'secondary' }) + studio.btn('退出登录', 'auth-logout', { variant: 'ghost', icon: 'logout' }) });
   }
 
+  const translate=value=>window.StudioAppearance?.t(value)||value;
   function field(label, name, options = {}) {
     const id = 'auth-' + name;
     const password = options.type === 'password';
     const described = `${id}-error${options.help ? ' ' + id + '-help' : ''}`;
-    return `<div class="field"><label class="field-label" for="${id}">${studio.escape(label)}<span class="required-star">*</span></label><div class="${password ? 'auth-password' : 'auth-input-wrap'}"><input class="input" id="${id}" name="${name}" type="${options.type || 'text'}" value="${studio.escape(options.value || '')}" autocomplete="${options.autocomplete || 'off'}"${options.inputmode ? ` inputmode="${options.inputmode}"` : ''} maxlength="${options.maxlength || (password ? 128 : 254)}" placeholder="${studio.escape(options.placeholder || '')}" aria-describedby="${described}" required${name === 'email' ? ' autocapitalize="none" spellcheck="false"' : ''}>${password ? `<button type="button" class="auth-password-toggle" data-action="auth-toggle-password" data-input="${id}" aria-label="显示${studio.escape(label)}" aria-pressed="false">${studio.icon('eye', 17)}<span>显示</span></button>` : ''}</div>${options.help ? `<p class="field-help" id="${id}-help">${studio.escape(options.help)}</p>` : ''}<p class="field-error" id="${id}-error"></p></div>`;
+    return `<div class="field"><label class="field-label" for="${id}">${studio.escape(translate(label))}<span class="required-star">*</span></label><div class="${password ? 'auth-password' : 'auth-input-wrap'}"><input class="input" id="${id}" name="${name}" type="${options.type || 'text'}" value="${studio.escape(options.value || '')}" autocomplete="${options.autocomplete || 'off'}"${options.inputmode ? ` inputmode="${options.inputmode}"` : ''} maxlength="${options.maxlength || (password ? 128 : 254)}" placeholder="${studio.escape(translate(options.placeholder || ''))}" aria-describedby="${described}" required${name === 'email' ? ' autocapitalize="none" spellcheck="false"' : ''}>${password ? `<button type="button" class="auth-password-toggle" data-action="auth-toggle-password" data-input="${id}" aria-label="显示${studio.escape(translate(label))}" aria-pressed="false">${studio.icon('eye', 17)}<span>显示</span></button>` : ''}</div>${options.help ? `<p class="field-help" id="${id}-help">${studio.escape(options.help)}</p>` : ''}<p class="field-error" id="${id}-error"></p></div>`;
   }
 
   function formError() { return '<div class="notice error auth-form-error" id="auth-form-error" role="alert" tabindex="-1" hidden></div>'; }
-  function submit(label) { return `<button type="submit" class="btn btn-primary auth-submit"><span>${studio.escape(label)}</span>${studio.icon('arrow', 16)}</button>`; }
+  function submit(label) { return `<button type="submit" class="btn btn-primary auth-submit"><span>${studio.escape(translate(label))}</span>${studio.icon('arrow', 16)}</button>`; }
   function rememberField() { return '<label class="auth-check" for="auth-remember"><input type="checkbox" id="auth-remember" name="remember"><span>记住登录 7 天</span></label>'; }
   function brand() { return `<a class="auth-brand" href="#login" aria-label="OTRYX Studio 登录"><span class="auth-brand-symbol">${studio.icon('layers', 23)}</span><span>OTRYX <span class="auth-brand-sub">Studio</span></span></a>`; }
 
   function layout(title, description, content, active = 'login') {
     const session = getSession();
-    return `<div class="auth-page"><header class="auth-top">${brand()}<span class="auth-prototype-label">本地交互原型</span>${window.StudioAppearance?.controls()||''}${session ? '<a class="auth-back" href="#home">返回工作空间</a>' : `<a class="auth-back" href="#${active === 'register' ? 'login' : 'register'}">${active === 'register' ? '已有账户？登录' : '创建本地账户'}</a>`}</header><div class="auth-layout"><aside class="auth-intro" aria-label="工作空间介绍"><p class="eyebrow">YOUR AI WORKSPACE</p><h2>从一个想法，<br>到可运行的应用。</h2><p class="auth-intro-description">在同一个空间里构建智能体、编排工作流，<br class="auth-desktop-break">让每一次调用都可配置、可追踪、可改进。</p><div class="auth-feature-list"><div>${studio.icon('agent', 20)}<p><strong>让智能体完成任务</strong><span>配置模型、工具和协作方式。</span></p></div><div>${studio.icon('workflow', 20)}<p><strong>把过程编排清楚</strong><span>从节点传参到分支执行，逐步调试。</span></p></div><div>${studio.icon('code', 20)}<p><strong>将能力提供给业务</strong><span>发布应用与 API，持续检查质量。</span></p></div></div><p class="auth-intro-note">你的内容，保存在当前浏览器。<br>账户之间使用独立工作空间。</p></aside><section class="auth-card" aria-labelledby="auth-heading"><div class="auth-card-heading"><p class="auth-step-label">${active === 'register' ? '创建你的工作空间' : active === 'forgot-password' || active === 'reset-password' ? '找回访问方式' : active === 'session-expired' ? '会话状态' : '欢迎回来'}</p><h1 id="auth-heading" tabindex="-1">${studio.escape(title)}</h1><p>${studio.escape(description)}</p></div>${content}</section></div><footer class="auth-footer"><span>OTRYX Studio</span><span>本地演示账户 · 不连接身份服务 · 不发送邮件</span></footer></div>`;
+    return `<div class="auth-page"><header class="auth-top">${brand()}<span class="auth-prototype-label">本地交互原型</span>${window.StudioAppearance?.controls()||''}${session ? '<a class="auth-back" href="#home">返回工作空间</a>' : `<a class="auth-back" href="#${active === 'register' ? 'login' : 'register'}">${active === 'register' ? '已有账户？登录' : '创建本地账户'}</a>`}</header><div class="auth-layout"><aside class="auth-intro" aria-label="工作空间介绍"><p class="eyebrow">YOUR AI WORKSPACE</p><h2>从一个想法，<br>到可运行的应用。</h2><p class="auth-intro-description">在同一个空间里构建智能体、编排工作流，<br class="auth-desktop-break">让每一次调用都可配置、可追踪、可改进。</p><div class="auth-feature-list"><div>${studio.icon('agent', 20)}<p><strong>让智能体完成任务</strong><span>配置模型、工具和协作方式。</span></p></div><div>${studio.icon('workflow', 20)}<p><strong>把过程编排清楚</strong><span>从节点传参到分支执行，逐步调试。</span></p></div><div>${studio.icon('code', 20)}<p><strong>将能力提供给业务</strong><span>发布应用与 API，持续检查质量。</span></p></div></div><p class="auth-intro-note">你的内容，保存在当前浏览器。<br>账户之间使用独立工作空间。</p></aside><section class="auth-card" aria-labelledby="auth-heading"><div class="auth-card-heading"><p class="auth-step-label">${active === 'register' ? '创建你的工作空间' : active === 'forgot-password' || active === 'reset-password' ? '找回访问方式' : active === 'session-expired' ? '会话状态' : '欢迎回来'}</p><h1 id="auth-heading" tabindex="-1">${studio.escape(translate(title))}</h1><p>${studio.escape(translate(description))}</p></div>${content}</section></div><footer class="auth-footer"><span>OTRYX Studio</span><span>本地演示账户 · 不连接身份服务 · 不发送邮件</span></footer></div>`;
   }
 
   function loginPage() {
@@ -1342,12 +1625,13 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   S.icon=(name,size=18)=>`<svg class="icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name]||paths.spark}"/></svg>`;
   S.uid=(prefix='item')=>prefix+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,6);
   S.badge=(label,tone='neutral')=>`<span class="badge ${esc(tone)}">${esc(label)}</span>`;
-  S.btn=(label,action,opts={})=>`<button type="button" class="btn btn-${opts.variant||'primary'}${opts.small?' btn-sm':''}" data-action="${esc(action)}" ${opts.attrs||''}>${opts.icon?S.icon(opts.icon,opts.small?13:15):''}<span>${esc(label)}</span></button>`;
+  const uiText=value=>window.StudioAppearance?.t(value)||value;
+  S.btn=(label,action,opts={})=>`<button type="button" class="btn btn-${opts.variant||'primary'}${opts.small?' btn-sm':''}" data-action="${esc(action)}" ${opts.attrs||''}>${opts.icon?S.icon(opts.icon,opts.small?13:15):''}<span>${esc(opts.translate===false?label:uiText(label))}</span></button>`;
   S.header=(eyebrow,title,description='',actions='')=>`<div class="page-heading"><div><p class="eyebrow">${esc(eyebrow)}</p><h1>${esc(title)}</h1>${description?`<p class="page-description">${esc(description)}</p>`:''}</div><div class="heading-actions">${actions}</div></div>`;
-  S.tabs=(items,active,action)=>`<div class="tabs" aria-label="页面筛选">${items.map(x=>`<button type="button" class="tab ${x.id===active?'active':''}" data-action="${esc(action)}" data-id="${esc(x.id)}" aria-pressed="${x.id===active}">${esc(x.label)}${x.count!==undefined?`<span class="tab-count">${esc(x.count)}</span>`:''}</button>`).join('')}</div>`;
+  S.tabs=(items,active,action)=>`<div class="tabs" aria-label="页面筛选">${items.map(x=>`<button type="button" class="tab ${x.id===active?'active':''}" data-action="${esc(action)}" data-id="${esc(x.id)}" aria-pressed="${x.id===active}">${esc(uiText(x.label))}${x.count!==undefined?`<span class="tab-count">${esc(x.count)}</span>`:''}</button>`).join('')}</div>`;
   S.empty=(title,description,action='')=>`<div class="empty-state"><div class="empty-icon">${S.icon('search',24)}</div><h3>${esc(title)}</h3><p class="small">${esc(description)}</p>${action}</div>`;
-  S.search=(id,placeholder,value='')=>`<div class="search-field">${S.icon('search',15)}<input type="search" id="${esc(id)}" value="${esc(value)}" placeholder="${esc(placeholder)}" aria-label="${esc(placeholder)}" autocomplete="off"><button type="button" class="search-clear" data-action="clear-search" data-input="${esc(id)}" aria-label="清除搜索" ${value?'':'hidden'}>${S.icon('close',13)}</button></div>`;
-  S.field=(label,o={})=>{const id=o.id||o.name;return `<div class="field"><label class="field-label" for="${esc(id)}">${esc(label)}${o.required?'<span class="required-star">*</span>':''}</label><input class="input" id="${esc(id)}" name="${esc(o.name||id)}" type="${esc(o.type||'text')}" value="${esc(o.value??'')}" placeholder="${esc(o.placeholder||'')}" ${o.required?'required':''} aria-describedby="${esc(id)}-error${o.help?' '+esc(id)+'-help':''}" ${o.type==='password'?'autocomplete="new-password"':''}>${o.help?`<p class="field-help" id="${esc(id)}-help">${esc(o.help)}</p>`:''}<p class="field-error" id="${esc(id)}-error"></p></div>`;};
+  S.search=(id,placeholder,value='')=>`<div class="search-field">${S.icon('search',15)}<input type="search" id="${esc(id)}" value="${esc(value)}" placeholder="${esc(uiText(placeholder))}" aria-label="${esc(uiText(placeholder))}" autocomplete="off"><button type="button" class="search-clear" data-action="clear-search" data-input="${esc(id)}" aria-label="清除搜索" ${value?'':'hidden'}>${S.icon('close',13)}</button></div>`;
+  S.field=(label,o={})=>{const id=o.id||o.name;return `<div class="field"><label class="field-label" for="${esc(id)}">${esc(uiText(label))}${o.required?'<span class="required-star">*</span>':''}</label><input class="input" id="${esc(id)}" name="${esc(o.name||id)}" type="${esc(o.type||'text')}" value="${esc(o.value??'')}" placeholder="${esc(uiText(o.placeholder||''))}" ${o.required?'required':''} aria-describedby="${esc(id)}-error${o.help?' '+esc(id)+'-help':''}" ${o.type==='password'?'autocomplete="new-password"':''}>${o.help?`<p class="field-help" id="${esc(id)}-help">${esc(o.help)}</p>`:''}<p class="field-error" id="${esc(id)}-error"></p></div>`;};
   S.validate=(form,rules)=>{let first=null;Object.entries(rules).forEach(([name,rule])=>{const field=form.elements.namedItem(name)||form.querySelector('#'+CSS.escape(name));if(!field)return;const value=String(field.value||'').trim();const error=typeof rule==='function'?rule(value):(!value?rule:null);field.setAttribute('aria-invalid',error?'true':'false');let help=document.getElementById(field.id+'-error');if(!help){help=document.createElement('p');help.className='field-error';help.id=field.id+'-error';field.after(help);}help.textContent=error||'';field.setAttribute('aria-describedby',help.id);if(error&&!first)first=field;});if(first){first.focus();return false;}return true;};
   S.page=(route,config)=>{S.pages[route]=config;}; S.action=(name,fn)=>{S.actions[name]=fn;}; S.form=(name,fn)=>{S.forms[name]=fn;};
   const report=(title)=>`# ${title}\n\n> OTRYX Studio 交互原型 · 演示产物\n\n## 工作摘要\n\n已完成资料整理、结构化分析与人工确认。此文件由原型中的示例数据生成，用于体验完整的任务交付流程。\n\n## 关键发现\n\n1. 本周重点工作已按主题归类，形成可复用的知识条目。\n2. 三项待办已明确负责人和下一步动作。\n3. 需要外部操作的内容保留人工确认环节。\n\n## 下一步\n\n- 核对数据来源与结论。\n- 将失败案例加入评测集。\n- 发布通过验证的智能体版本。\n`;
@@ -1398,7 +1682,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
     const page=S.pages[route];const target=document.getElementById('page-content');if(!target)return;
     S.renderChrome();
     if(!page){target.innerHTML=S.header('WORKSPACE','这个页面还没有准备好','请从左侧导航继续探索。')+S.empty('没有找到页面','返回工作台开始新的任务。',S.btn('返回工作台','go-home'));document.title='页面未找到 · OTRYX Studio';return;}
-    document.title=page.title+' · OTRYX Studio';target.innerHTML=page.render();if(page.mount)S.cleanup=page.mount(target)||null;
+    document.title=uiText(page.title)+' · OTRYX Studio';target.innerHTML=page.render();if(page.mount)S.cleanup=page.mount(target)||null;
     document.querySelectorAll('.search-field input').forEach(input=>{const clear=input.parentElement.querySelector('.search-clear');if(clear)clear.hidden=!input.value;});
     window.StudioAppearance?.localize(target);
   };
@@ -1415,23 +1699,23 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
     // Keep the nav, links and focusable controls alive. Runtime status updates only
     // patch their values, so scrolling the navigation never resets it to the top.
     if(!sidebar.dataset.chromeReady){
-      const navItem=(route,icon,label,count=false,warm=false)=>`<a class="nav-item" data-nav="${route}" href="#${route}">${S.icon(icon,17)}<span>${label}</span>${count?`<span class="nav-count ${warm?'warm':''}" data-nav-count="${route}" hidden></span>`:''}</a>`;
-      sidebar.innerHTML=`<a class="brand" href="#home" aria-label="OTRYX Studio 工作台"><svg class="brand-logo" viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="M9 7h13a13 13 0 0 1 0 26H9V7Z" stroke="currentColor" stroke-width="4.5"/><path d="M22 7v26M9 20h25" stroke="currentColor" stroke-width="4.5"/><circle cx="9" cy="7" r="3.5" fill="currentColor"/></svg><span class="brand-name">OTRYX<small>STUDIO</small></span></a><button class="workspace-switch" type="button" data-action="space-manager"><span class="space-avatar" data-chrome="space-initial"></span><span class="space-copy"><strong data-chrome="space-name"></strong><small>个人工作空间</small></span>${S.icon('chevron',12)}</button><nav class="nav-scroll" aria-label="工作空间页面"><p class="nav-label">构建与发布</p>${navItem('home','home','工作台')}${navItem('agents','agent','智能体',true)}${navItem('workflows','workflow','工作流')}${navItem('planning','users','协作计划')}${navItem('services','globe','发布与 API')}<p class="nav-label">资源管理</p>${navItem('models','layers','模型中心')}${navItem('knowledge','book','知识库')}${navItem('capabilities','plug','工具与连接')}${navItem('library','file','提示词与 Skills')}${navItem('market','grid','资源市场')}<p class="nav-label">运行与改进</p>${navItem('tasks','play','运行记录',true,true)}${navItem('usage','chart','用量与成本')}${navItem('quality','shield','质量评测')}${navItem('review','users','发布审核',true,true)}</nav><div class="sidebar-status"><div class="between"><span class="small">本月用量</span><span class="budget-num"><span data-chrome="cost"></span> <span class="muted" data-chrome="budget"></span></span></div><div class="progress-track"><div class="progress-fill"></div></div><div class="between"><span class="small muted" data-chrome="ratio"></span><a href="#usage" aria-label="查看用量明细">${S.icon('arrow',12)}</a></div></div><div class="sidebar-profile"><button type="button" class="profile-avatar" data-action="profile" data-chrome="initials" aria-label="我的账户"></button><div class="profile-copy"><span data-chrome="account-name"></span><small data-chrome="role"></small></div><a class="icon-btn" href="#settings" aria-label="空间设置">${S.icon('settings',17)}</a></div>`;
+      const navItem=(route,icon,label,count=false,warm=false)=>`<a class="nav-item" data-nav="${route}" href="#${route}">${S.icon(icon,17)}<span data-i18n="${esc(label)}">${esc(uiText(label))}</span>${count?`<span class="nav-count ${warm?'warm':''}" data-nav-count="${route}" hidden></span>`:''}</a>`;
+      sidebar.innerHTML=`<a class="brand" href="#home" aria-label="OTRYX Studio 工作台"><svg class="brand-logo" viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="M9 7h13a13 13 0 0 1 0 26H9V7Z" stroke="currentColor" stroke-width="4.5"/><path d="M22 7v26M9 20h25" stroke="currentColor" stroke-width="4.5"/><circle cx="9" cy="7" r="3.5" fill="currentColor"/></svg><span class="brand-name">OTRYX<small>STUDIO</small></span></a><button class="workspace-switch" type="button" data-action="space-manager"><span class="space-avatar" data-chrome="space-initial"></span><span class="space-copy"><strong data-chrome="space-name"></strong><small data-chrome="project-name" data-no-i18n></small></span>${S.icon('chevron',12)}</button><nav class="nav-scroll" aria-label="工作空间页面"><p class="nav-label">构建与发布</p>${navItem('home','home','工作台')}${navItem('projects','layers','项目管理')}${navItem('agents','agent','智能体',true)}${navItem('workflows','workflow','工作流')}${navItem('services','globe','发布与 API')}<p class="nav-label">资源管理</p>${navItem('models','layers','模型中心')}${navItem('credentials','shield','凭证中心')}${navItem('knowledge','book','知识库')}${navItem('capabilities','plug','工具与连接')}${navItem('library','file','提示词与 Skills')}${navItem('market','grid','资源市场')}<p class="nav-label">运行与改进</p>${navItem('tasks','play','运行记录',true,true)}${navItem('planning','users','协作计划')}${navItem('inbox','bell','待办与审批')}${navItem('usage','chart','用量与成本')}${navItem('quality','shield','质量评测')}${navItem('review','users','发布审核',true,true)}</nav><div class="sidebar-status"><div class="between"><span class="small">本月用量</span><span class="budget-num"><span data-chrome="cost"></span> <span class="muted" data-chrome="budget"></span></span></div><div class="progress-track"><div class="progress-fill"></div></div><div class="between"><span class="small muted" data-chrome="ratio"></span><a href="#usage" aria-label="查看用量明细">${S.icon('arrow',12)}</a></div></div><div class="sidebar-profile"><button type="button" class="profile-avatar" data-action="profile" data-chrome="initials" aria-label="我的账户"></button><div class="profile-copy"><span data-chrome="account-name"></span><small data-chrome="role"></small></div><a class="icon-btn" href="#settings" aria-label="空间设置">${S.icon('settings',17)}</a></div>`;
       sidebar.dataset.chromeReady='true';
     }
     sidebar.querySelectorAll('[data-nav]').forEach(link=>{const route=link.dataset.nav,active=(navGroups[route]||[route]).includes(S.route);link.classList.toggle('active',active);if(active)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');if(route==='review')link.hidden=S.state.role!=='admin';});
     const setText=(root,key,value)=>{const el=root.querySelector('[data-chrome="'+key+'"]');if(el&&el.textContent!==String(value))el.textContent=value;};
     [['agents',S.state.agents.length],['tasks',waiting],['review',reviews]].forEach(([key,count])=>{const el=sidebar.querySelector('[data-nav-count="'+key+'"]');if(el){el.hidden=!count;el.textContent=String(count);}});
-    setText(sidebar,'space-name',S.state.spaceName||'我的工作空间');setText(sidebar,'space-initial',Array.from(S.state.spaceName||name)[0]||'我');
-    setText(sidebar,'account-name',name);setText(sidebar,'initials',initials);setText(sidebar,'role',S.state.role==='admin'?'管理员 · 演示角色':'个人工作空间');
+    setText(sidebar,'space-name',S.state.spaceName||'我的工作空间');setText(sidebar,'project-name',window.StudioProjects?.active()?.name||'个人工作空间');setText(sidebar,'space-initial',Array.from(S.state.spaceName||name)[0]||'我');
+    setText(sidebar,'account-name',name);setText(sidebar,'initials',initials);setText(sidebar,'role',uiText(S.state.role==='admin'?'管理员 · 演示角色':'个人工作空间'));
     setText(sidebar,'cost','¥ '+usage.cost.toFixed(2));setText(sidebar,'budget','/ '+usage.budget);setText(sidebar,'ratio','预算使用 '+(usage.ratio*100).toFixed(1)+'%');
     const status=sidebar.querySelector('.sidebar-status'),progress=sidebar.querySelector('.progress-fill');if(status)status.hidden=S.state.gov?.preferences.digest===false;if(progress)progress.style.width=Math.max(0,Math.min(100,usage.ratio*100))+'%';
     if(!topbar.dataset.chromeReady){
       topbar.innerHTML=`<div class="row"><button type="button" class="icon-btn mobile-menu" data-action="toggle-sidebar" aria-label="打开导航">${S.icon('menu',20)}</button><div class="crumbs"><span class="crumb-home">我的空间</span><span class="crumb-divider">/</span><strong data-chrome="page-title"></strong><span class="badge warning" data-chrome="admin" hidden>管理员演示</span></div></div><div class="top-actions">${window.StudioAppearance?.controls()||''}<span class="demo-badge">本地原型</span><button type="button" class="global-search" data-action="command-search" aria-label="搜索页面与资源">${S.icon('search',14)}<span>搜索工作空间</span><kbd>⌘ K</kbd></button><button type="button" class="icon-btn" data-action="notifications" aria-label="查看待办通知">${S.icon('bell',18)}<i class="notification-dot" hidden></i></button><button type="button" class="profile-avatar" data-action="profile" data-chrome="initials" aria-label="我的账户与退出"></button></div>`;
       topbar.dataset.chromeReady='true';
     }
-    setText(topbar,'page-title',S.pages[S.route]?.title||'工作台');setText(topbar,'initials',initials);
-    const admin=topbar.querySelector('[data-chrome="admin"]'),dot=topbar.querySelector('.notification-dot');if(admin)admin.hidden=S.state.role!=='admin';if(dot)dot.hidden=!waiting;
+    setText(topbar,'page-title',uiText(S.pages[S.route]?.title||'工作台'));setText(topbar,'initials',initials);
+    const admin=topbar.querySelector('[data-chrome="admin"]'),dot=topbar.querySelector('.notification-dot');if(admin)admin.hidden=S.state.role!=='admin';if(dot)dot.hidden=!(S.Inbox?.count()||waiting);
     window.StudioAppearance?.localize(sidebar);window.StudioAppearance?.localize(topbar);
   };
   S.modal=(opts)=>{
@@ -1462,7 +1746,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   S.action('open-task',el=>{S.closeModal();S.go('task',{id:el.dataset.id});});S.action('all-tasks',()=>{S.closeModal();S.go('tasks');});
   S.action('command-search',()=>{
     if(window.StudioAuth&&!window.StudioAuth.getSession())return;
-    const pages=[['home','工作台'],['agents','智能体'],['workflows','工作流'],['planning','协作计划'],['services','发布与 API'],['models','模型中心'],['knowledge','知识库'],['capabilities','工具与连接'],['library','提示词与 Skills'],['market','资源市场'],['tasks','运行记录'],['quality','质量评测'],['usage','用量与成本'],['settings','空间设置']];
+    const pages=[['home','工作台'],['projects','项目管理'],['credentials','凭证中心'],['inbox','待办与审批'],['agents','智能体'],['workflows','工作流'],['planning','协作计划'],['services','发布与 API'],['models','模型中心'],['knowledge','知识库'],['capabilities','工具与连接'],['library','提示词与 Skills'],['market','资源市场'],['tasks','运行记录'],['quality','质量评测'],['usage','用量与成本'],['settings','空间设置']];
     const entries=pages.map(([route,name])=>({href:'#'+route,name,kind:'页面'})).concat(S.state.agents.map(a=>({href:'#agent?id='+encodeURIComponent(a.id),name:a.name,kind:'智能体'})),(S.Runtime?.flows||[]).map(f=>({href:'#workflow?id='+encodeURIComponent(f.id),name:f.title,kind:'工作流'})),(S.ContentStore?.listKnowledge()||[]).map(k=>({href:'#knowledge-detail?id='+encodeURIComponent(k.id),name:k.name,kind:'知识库'})));
     const results=q=>entries.filter(x=>(x.name+' '+x.kind).toLowerCase().includes(q.toLowerCase())).slice(0,12).map(x=>`<a class="command-item" href="${esc(x.href)}"><span>${esc(x.name)}</span><small>${esc(x.kind)}</small></a>`).join('')||S.empty('没有匹配内容','换个关键词搜索。');
     S.modal({title:'搜索工作空间',body:S.search('command-query','搜索页面、智能体、工作流或知识库')+'<div id="command-results">'+results('')+'</div>',onOpen:d=>{const field=d.querySelector('#command-query');const update=()=>{d.querySelector('#command-results').innerHTML=results(field.value.trim());};field.addEventListener('input',ev=>{if(!ev.isComposing)update();});field.addEventListener('compositionend',update);field.focus();}});
@@ -1637,7 +1921,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
     }
     return R.nodeType(node.type)?.inputs;
   };
-  R.testConnection = id => { const c=R.getConnection(id); if(!c) return {ok:false,error:'连接不存在'};const configured=Boolean(c.endpoint||c.command),authorized=Boolean(c.credentialRef||c.authType==='none'),discovered=R.tools.some(t=>t.connectionId===c.id)||R.resources.some(r=>r.connectionId===c.id)||R.prompts.some(p=>p.connectionId===c.id); const ok=c.enabled!==false&&configured&&authorized&&discovered;c.status=ok?'ready':c.enabled===false?'disabled':!authorized?'auth_required':'unverified';c.lastTest={at:Date.now(),ok,simulated:true,checks:[{name:'本地配置',ok:configured},{name:'凭据引用',ok:authorized},{name:'本地模拟能力',ok:discovered}]};S.save();return c.lastTest; };
+  R.testConnection = id => { const c=R.getConnection(id); if(!c) return {ok:false,error:'连接不存在'};const configured=Boolean(c.endpoint||c.command),authorized=Boolean(c.credentialRef||c.authType==='none')&&S.Credentials?.isUsable('tool',c.credentialRef)!==false,discovered=R.tools.some(t=>t.connectionId===c.id)||R.resources.some(r=>r.connectionId===c.id)||R.prompts.some(p=>p.connectionId===c.id); const ok=c.enabled!==false&&configured&&authorized&&discovered;c.status=ok?'ready':c.enabled===false?'disabled':!authorized?'auth_required':'unverified';c.lastTest={at:Date.now(),ok,simulated:true,checks:[{name:'本地配置',ok:configured},{name:'凭据引用',ok:authorized},{name:'本地模拟能力',ok:discovered}]};S.save();return c.lastTest; };
   R.refreshCapabilities = id => { const c=R.getConnection(id); if(!c) return {ok:false,error:'连接不存在'};const result={ok:c.enabled!==false&&c.status==='ready',simulated:true,at:Date.now(),tools:R.tools.filter(t=>t.connectionId===id).length,added:[],removed:[],changed:[]};c.lastDiscovery=result;S.save();return result; };
 
   R.validateSchema = function validate(value, definition, path) {
@@ -1738,12 +2022,16 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
       if(o.binding&&o.binding.enabled===false)throw issue('TOOL_DISABLED','此能力绑定已禁用。');if(o.binding?.toolId&&o.binding.toolId!==tool.id)throw issue('POLICY_DENIED','能力绑定不允许调用该工具。');if(o.binding?.version&&o.binding.version!==tool.version)throw issue('VERSION_MISMATCH','绑定版本 '+o.binding.version+' 当前不可用；请检查升级影响并重新绑定 '+tool.version+'。');
       const connection=R.getConnection(call.connectionId);const connectionSnapshot=run.capabilitySnapshots?.connections?.find(c=>c.id===call.connectionId)||connection;call.connectionVersion=connectionSnapshot?.version;if(!connection)throw issue('CONNECTION_NOT_FOUND','连接实例不存在。');
       if(connection.enabled===false||connection.status==='disabled')throw issue('CONNECTION_DISABLED','连接已禁用，请启用后重试。');
+      S.Credentials?.assertUsable('tool',connection.credentialRef);
+      S.Credentials?.assertUsable('tool',connectionSnapshot?.credentialRef);
       if(connection.status==='auth_required'||(!connection.credentialRef&&connection.authType!=='none'))throw issue('AUTH_REQUIRED','连接需要配置凭据引用。');
       const plugin=tool.pluginId&&R.plugins.find(p=>p.id===tool.pluginId);if(tool.pluginId&&(!plugin||plugin.enabled===false||plugin.status!=='installed'))throw issue('PLUGIN_DISABLED','插件未安装或已禁用。');
       if(connection.status!=='ready')throw issue('CONNECTION_NOT_READY','连接尚未就绪，请先测试连接配置。');
       const args=copy(o.args||{});const errs=R.validateSchema(args,tool.inputSchema);if(errs.length)throw issue('INPUT_SCHEMA',errs.join('；'),{details:errs});
       if((tool.write||o.binding&&o.binding.approval==='always')&&!o.approved){call.status='waiting';const approval=await requestApproval(run,{kind:'approval',title:tool.write?'确认目标位置与写入内容':'确认工具调用',description:tool.description,toolCallId:call.id,nodeId:o.nodeId,nodeExecutionId:o.nodeExecutionId,args:copy(args),preview:args.content||args.values||args,fields:[]});if(!approval.approved)throw issue('REJECTED','用户拒绝了工具调用。');call.status='running';}
       assertActive(run);
+      S.Credentials?.assertUsable('tool',connection.credentialRef);
+      S.Credentials?.assertUsable('tool',connectionSnapshot?.credentialRef);
       if(connection.enabled===false||connection.status==='disabled')throw issue('CONNECTION_DISABLED','审批期间连接已被禁用。');if(connection.status!=='ready'||(!connection.credentialRef&&connection.authType!=='none'))throw issue('AUTH_REQUIRED','审批期间连接授权已失效。');
       const scenario=scenarioFor(run,o.nodeId,o.scenario);call.scenario=scenario;
       const meta={protocolVersion:connectionSnapshot.protocolVersion||'2026-07-28',clientInfo:{name:'OTRYX Prototype',version:'1.0'},traceparent:'00-'+run.traceId+'-'+call.spanId+'-01'};
@@ -1953,8 +2241,8 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
         await R.waitForRun(child);unsubscribe();if(child.status!=='done')throw issue('SUBFLOW_FAILED','子流程未完成：'+(child.error||child.status));return{result:copy(child.outcome.returnValue),childRunId:child.id};
       }
       case'wait':{if(c.mode==='event'){const response=await requestApproval(run,{kind:'input',nodeId:node.id,nodeExecutionId:execution.id,title:'等待事件 · '+(c.eventName||''),description:'提交可模拟关联事件到达。',fields:[]});if(!response.approved)throw issue('REJECTED','等待已取消。');return{event:response.values};}await delay(run,Math.min(2000,Math.max(0,Number(c.delayMs)||0)));assertActive(run);return{event:{resumed:true}};}
-      case'resource':{const resource=c.resourceSnapshot||R.resources.find(r=>r.id===c.resourceId);if(!resource)throw issue('RESOURCE_MISSING','资源不存在。');const conn=R.getConnection(resource.connectionId);if(conn&&(conn.enabled===false||conn.status!=='ready'))throw issue('CONNECTION_DISABLED','资源连接未就绪。');return{text:resource.text,uri:resource.uri};}
-      case'prompt':{const prompt=c.promptSnapshot||(S.ContentStore?.getContent(c.promptId)?S.ContentStore.resolveContext({kind:'prompt',id:c.promptId,version:c.version}):R.prompts.find(p=>p.id===c.promptId&&(!c.version||String(p.version)===String(c.version))));if(!prompt)throw issue('PROMPT_MISSING','Prompt 不存在。');const connection=R.getConnection(prompt.connectionId);if(connection&&(connection.enabled===false||connection.status!=='ready'))throw issue('CONNECTION_DISABLED','Prompt 连接未就绪。');for(const arg of prompt.arguments||[])if(arg.required&&input[arg.name]===undefined)throw issue('PROMPT_ARGUMENT','缺少 Prompt 参数：'+arg.name);const text=String(prompt.template||prompt.content||'').replace(/{{\s*([^{}]+?)\s*}}/g,(_,key)=>String(input[key.trim()]??''));return{messages:[{role:'user',content:text}]};}
+      case'resource':{const resource=c.resourceSnapshot||R.resources.find(r=>r.id===c.resourceId);if(!resource)throw issue('RESOURCE_MISSING','资源不存在。');const conn=R.getConnection(resource.connectionId);if(conn)S.Credentials?.assertUsable('tool',conn.credentialRef);if(conn&&(conn.enabled===false||conn.status!=='ready'))throw issue('CONNECTION_DISABLED','资源连接未就绪。');return{text:resource.text,uri:resource.uri};}
+      case'prompt':{const prompt=c.promptSnapshot||(S.ContentStore?.getContent(c.promptId)?S.ContentStore.resolveContext({kind:'prompt',id:c.promptId,version:c.version}):R.prompts.find(p=>p.id===c.promptId&&(!c.version||String(p.version)===String(c.version))));if(!prompt)throw issue('PROMPT_MISSING','Prompt 不存在。');const connection=R.getConnection(prompt.connectionId);if(connection)S.Credentials?.assertUsable('tool',connection.credentialRef);if(connection&&(connection.enabled===false||connection.status!=='ready'))throw issue('CONNECTION_DISABLED','Prompt 连接未就绪。');for(const arg of prompt.arguments||[])if(arg.required&&input[arg.name]===undefined)throw issue('PROMPT_ARGUMENT','缺少 Prompt 参数：'+arg.name);const text=String(prompt.template||prompt.content||'').replace(/{{\s*([^{}]+?)\s*}}/g,(_,key)=>String(input[key.trim()]??''));return{messages:[{role:'user',content:text}]};}
       case'answer':{const text=input.text??R.resolveBinding(template(c.template||''),ctx);if(ctx.__scope)ctx.__returnValue=text;else run.outcome.returnValue=text;emit(run,'answer.created',{nodeId:node.id,text});return{text};}
       case'output':{if(c.mode==='data'){const value=copy(input);if(ctx.__scope)ctx.__returnValue=value;else run.outcome.returnValue=value;return{value};}return{};}
       case'artifact':{const raw=input.content??input;const content=typeof raw==='string'?raw:JSON.stringify(raw,null,2);const artifact={id:uid('artifact'),name:c.filename||'result.txt',type:c.format||'Text',content,simulated:true,nodeId:node.id};run.outcome.artifacts.push(artifact);run.artifacts=run.outcome.artifacts;emit(run,'artifact.created',{nodeId:node.id,artifact:{id:artifact.id,name:artifact.name,type:artifact.type}});return{file:{id:artifact.id,name:artifact.name,type:artifact.type,size:content.length}};}
@@ -2550,7 +2838,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
       const snapshot = S.ContentStore?.getContent(id, version);
       return snapshot ? { ...asset, ...snapshot } : null;
     }
-    return asset;
+    return asset && version && String(asset.version)!==String(version) ? null : asset;
   };
   const getResource = id => allResources().find(a => a.id === id);
   function installedTarget(id) {
@@ -2593,6 +2881,14 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
     return graph;
   }
   function publicEndpoint(value) { try { const url = new URL(value); return /^https?:$/.test(url.protocol) ? url.origin + url.pathname : undefined; } catch (_) { return undefined; } }
+  // Public plugin packages only contain a portable allow-listed adapter manifest.
+  // Never publish instance endpoints, configuration, credentials or execution history.
+  function publicPluginManifest(plugin) {
+    const allowed = new Set(['docs.create','table.upsert','web.search','web.fetch','workspace.write']);
+    const actions=(plugin.toolIds||[]).map(id=>(S.Runtime?.tools||[]).find(t=>t.id===id)).filter(Boolean).map(tool=>({name:tool.name,title:tool.title,adapterId:tool.adapterId||tool.originToolId||tool.id}));
+    if(!actions.length||actions.length!==(plugin.toolIds||[]).length||actions.length>12||actions.some(action=>!action.name||!allowed.has(action.adapterId))||new Set(actions.map(action=>action.name)).size!==actions.length)return null;
+    return {name:String(plugin.name||'Plugin'),description:String(plugin.description||''),version:String(plugin.version||'1.0.0'),actions};
+  }
   function shareable() {
     const contents = S.ContentStore?.listContent({ archived: false }) || [];
     const flows = (S.state.workflow?.flows || []).filter(f => f.publishedSnapshot || f.published).map(f => ({ id: f.id, type: 'workflow', name: f.title, description: f.description, content: JSON.stringify(publicSnapshot(f.publishedSnapshot || f), null, 2), version: (f.publishedSnapshot || f).version, tags: ['工作流'], workflowSnapshot: publicSnapshot(f.publishedSnapshot || f) }));
@@ -2601,7 +2897,15 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
       const configTemplate = { transport: c.transport || 'Streamable HTTP', location: c.location || '平台 Runner', endpoint };
       return { id: c.id, type: 'mcp', name: c.name, description: c.description || 'MCP 连接模板；安装者自行配置授权。', endpoint, transport: configTemplate.transport, location: configTemplate.location, configTemplate, content: JSON.stringify({ ...configTemplate, description: c.description || '', toolNames: (S.Runtime?.tools || []).filter(t => t.connectionId === c.id).map(t => t.name), note: c.transport === 'stdio' ? '启动命令、参数和环境变量由安装者自行配置，不在公共模板中共享。' : '授权与凭据引用由安装者自行配置。' }, null, 2), version: c.version || '1.0.0', tags: ['MCP 模板'] };
     });
-    return contents.concat(flows, connections);
+    const plugins=(S.Runtime?.plugins||[]).filter(p=>p.installed!==false&&p.status==='installed').map(p=>{
+      const manifest=publicPluginManifest(p);if(!manifest)return null;
+      return {id:p.id,type:'plugin',name:manifest.name,description:manifest.description||'可移植的插件动作清单',version:manifest.version,tags:['插件模板'],content:JSON.stringify(manifest,null,2),configTemplate:{manifest}};
+    }).filter(Boolean);
+    const agents=(S.state.agents||[]).filter(a=>a.publishedConfig).map(a=>{
+      const v=a.publishedConfig;
+      return {id:a.id,type:'agent',name:v.name,description:v.description||'智能体提示词模板；能力由安装者重新配置',version:v.version||a.version,tags:['Agent 模板'],content:v.prompt||''};
+    }).filter(a=>a.content);
+    return contents.concat(flows, connections, plugins, agents);
   }
   const visibleReviews = () => S.state.role === 'admin' ? S.state.reviews : S.state.reviews.filter(review => review.author === '我');
   const reviewBadge = status => S.badge(({ pending: '待审核', approved: '已通过', rejected: '已退回' })[status] || '草稿', ({ pending: 'warning', approved: 'success', rejected: 'danger' })[status] || 'neutral');
@@ -2668,17 +2972,17 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   function publishForm(asset) {
     if (!asset) return;
     if (S.state.reviews.some(r => r.assetId === asset.id && r.version === asset.version && ['pending', 'approved'].includes(r.status))) return S.toast('当前版本已经提交，无需重复提交。', 'info');
-    S.modal({ title: '提交公开审核', subtitle: `公开作品：${asset.name}`, body: `<form id="eco-publish-form" novalidate><div class="notice"><strong>通过审核后，所有社区用户都能发现并安装这份作品。</strong><p>提交的是当前版本快照；个人空间中的后续修改不会自动公开。</p></div>${field('公开说明', 'eco-public-description', asset.description, '说清楚用途、适用范围与使用方式，至少 12 个字符。', true, true)}<label class="eco-check-field"><input type="checkbox" id="eco-publish-consent" name="eco-publish-consent"><span>我已检查内容，确认不含私人资料、密钥或未经授权的内容。</span></label><p id="eco-publish-consent-error" class="field-error"></p></form>`, footer: `${S.btn('取消', 'eco-close', { variant: 'secondary' })}${S.btn('提交审核', 'eco-publish-confirm', { icon: 'send', attrs: attr(asset.id) + ' data-version="' + E(asset.version || '1.0.0') + '"' })}` });
+    S.modal({ title: '提交公开审核', subtitle: `公开作品：${asset.name}`, body: `<form id="eco-publish-form" novalidate><div class="notice"><strong>通过审核后，当前原型市场可发现并安装该版本；正式公共仓库面向所有获授权的用户。</strong><p>提交的是当前版本快照；个人空间中的后续修改不会自动公开。</p></div>${field('公开说明', 'eco-public-description', asset.description, '说清楚用途、适用范围与使用方式，至少 12 个字符。', true, true)}<label class="eco-check-field"><input type="checkbox" id="eco-publish-consent" name="eco-publish-consent"><span>我已检查内容，确认不含私人资料、密钥或未经授权的内容。</span></label><p id="eco-publish-consent-error" class="field-error"></p></form>`, footer: `${S.btn('取消', 'eco-close', { variant: 'secondary' })}${S.btn('提交审核', 'eco-publish-confirm', { icon: 'send', attrs: attr(asset.id) + ' data-version="' + E(asset.version || '1.0.0') + '"' })}` });
   }
   S.action('eco-publish', el => publishForm(getAsset(el.dataset.id, el.dataset.version)));
   S.action('eco-publish-choose', () => {
     const assets = shareable();
-    if (!assets.length) return S.modal({ title: '先创建一份模板', body: S.empty('暂时没有可提交的作品', 'Skill、MCP、提示词和工作流可以提交到公共市场。', S.btn('创建内容', 'eco-asset-create', { icon: 'plus' })), footer: S.btn('关闭', 'eco-close', { variant: 'secondary' }) });
+    if (!assets.length) return S.modal({ title: '先创建一份模板', body: S.empty('暂时没有可提交的作品', 'Agent、工作流、插件、Skill、MCP 和提示词可以提交到公共市场。', S.btn('创建内容', 'eco-asset-create', { icon: 'plus' })), footer: S.btn('关闭', 'eco-close', { variant: 'secondary' }) });
     S.modal({ title: '选择要分享的作品', subtitle: '个人知识库、记忆与文件不参与公共发布。', body: `<div class="field"><label class="field-label" for="eco-publish-asset">选择模板</label><select class="select" id="eco-publish-asset">${assets.map(a => `<option value="${E(a.id)}">${E(a.name)} · ${meta(a.type).label} · v${E(a.version || '1.0.0')}</option>`).join('')}</select></div><p class="notice small">提交后进入管理员审核，审核通过前不会出现在社区市场。</p>`, footer: `${S.btn('取消', 'eco-close', { variant: 'secondary' })}${S.btn('继续', 'eco-publish-next', { icon: 'arrow' })}` });
   });
   S.action('eco-publish-next', () => publishForm(getAsset(document.querySelector('#eco-publish-asset')?.value)));
   S.action('eco-publish-confirm', el => {
-    const a = getAsset(el.dataset.id, el.dataset.version); const form = document.querySelector('#eco-publish-form'); if (!a || !form || el.disabled) return;
+    const a = getAsset(el.dataset.id, el.dataset.version); const form = document.querySelector('#eco-publish-form'); if (!a) return S.toast('作品版本已变化，请重新选择当前版本。','warning'); if (!form || el.disabled) return;
     const valid = S.validate(form, { 'eco-public-description': value => value.trim().length < 12 ? '请补充至少 12 个字符的用途与使用说明。' : secretError(value) });
     const consent = form.querySelector('#eco-publish-consent');
     const error = form.querySelector('#eco-publish-consent-error');
@@ -2688,7 +2992,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
     if (S.state.reviews.some(r => r.assetId === a.id && r.version === a.version && ['pending', 'approved'].includes(r.status))) return S.toast('当前版本已经提交。', 'info');
     el.disabled = true;
     S.state.reviews.unshift({ id: S.uid('review'), assetId: a.id, name: a.name, type: a.type, workflowSnapshot: a.workflowSnapshot ? JSON.parse(JSON.stringify(a.workflowSnapshot)) : undefined, configTemplate: a.configTemplate ? JSON.parse(JSON.stringify(a.configTemplate)) : undefined, transport: a.transport, location: a.location, author: '我', status: 'pending', description: form.querySelector('#eco-public-description').value.trim(), content: a.content, endpoint: a.endpoint, tags: a.tags, version: a.version || '1.0.0', reason: '', created: stamp() });
-    S.save(); S.closeModal(); ui.reviewStatus = 'pending'; S.go('review'); S.render(); S.toast('作品已提交，等待管理员审核');
+    if(S.save()===false){S.state.reviews.shift();el.disabled=false;return S.toast('审核记录未保存，请检查浏览器存储。','warning');} S.closeModal(); ui.reviewStatus = 'pending'; S.go('review'); S.render(); S.toast('作品已提交，等待管理员审核');
   });
   function reviewResults() {
     const q = ui.reviewQuery.trim().toLowerCase();
@@ -2711,7 +3015,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
     const r = S.state.reviews.find(r => r.id === el.dataset.id);
     if (S.state.role !== 'admin') return S.toast('只有演示管理员可以审核作品。', 'warning');
     if (!r || r.status !== 'pending') return S.toast('这份提交已经处理，无需重复审核。', 'info');
-    r.status = 'approved'; r.reason = ''; r.reviewedAt = stamp(); S.save(); S.closeModal(); S.render(); S.toast(`“${r.name}”已通过审核，并在市场公开`);
+    const previous={...r};r.status = 'approved'; r.reason = ''; r.reviewedAt = stamp(); if(S.save()===false){Object.assign(r,previous);return S.toast('审核结果未保存','warning');} S.closeModal(); S.render(); S.toast(`“${r.name}”已通过审核，并在市场公开`);
   });
   S.action('eco-review-reject', el => {
     const r = S.state.reviews.find(r => r.id === el.dataset.id);
@@ -2724,6 +3028,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
     if (!form || !S.validate(form, { 'eco-reject-reason': value => value.trim().length < 8 ? '请填写至少 8 个字符的具体修改建议。' : secretError(value) })) return;
     r.status = 'rejected'; r.reason = form.querySelector('#eco-reject-reason').value.trim(); r.reviewedAt = stamp(); S.save(); S.closeModal(); S.render(); S.toast('作品已退回，修改原因已保存');
   });
+  S.Ecosystem={shareable,getAsset,allResources,publicPluginManifest};
   S.action('eco-review-market', el => { S.closeModal(); ui.marketType = 'all'; ui.marketQuery = S.state.reviews.find(r => r.id === el.dataset.id)?.name || ''; S.go('market'); S.render(); });
 })();
 
@@ -2909,7 +3214,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   const data = () => S.state.modelRegistry;
   const rawModel = value => { const key = typeof value === 'object' ? value?.id : value; return data().models.find(m => m.id === key) || data().models.find(m => m.name === key || (m.aliases || []).includes(key)); };
   const provider = id => data().providers.find(p => p.id === id);
-  const available = m => Boolean(m && m.enabled !== false && !m.archived && provider(m.providerId)?.enabled !== false && !provider(m.providerId)?.archived && provider(m.providerId));
+  const available = m => Boolean(m && m.enabled !== false && !m.archived && provider(m.providerId)?.enabled !== false && !provider(m.providerId)?.archived && provider(m.providerId) && S.Credentials?.isUsable('model',provider(m.providerId)?.credentialRef)!==false);
   const hasCaps = (m, needed = []) => needed.every(c => m.capabilities?.[c] === true);
   function syncLegacy() {
     S.state.models = data().models.map(m => ({ id: m.id, name: m.name, provider: provider(m.providerId)?.name || '连接已删除', type: types[m.type], modelType: m.type, endpoint: provider(m.providerId)?.baseUrl || '', status: available(m) ? 'connected' : 'disabled', capabilities: copy(m.capabilities), archived: !!m.archived }));
@@ -2947,6 +3252,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
     if (options.enabled !== false) {
       if (m.enabled === false || m.archived) fail('MODEL_DISABLED', `“${m.name}”已停用或归档，请启用后再运行。`);
       const p = provider(m.providerId); if (!p || p.enabled === false || p.archived) fail('PROVIDER_DISABLED', `“${m.name}”的服务商连接不可用，请在模型中心检查。`);
+      S.Credentials?.assertUsable('model',p.credentialRef);
     }
     return copy(m);
   }
@@ -2962,6 +3268,8 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
       if (!hasCaps(value, options.capabilities)) fail('MODEL_CAPABILITY_MISMATCH', '此运行固定的模型快照缺少所需能力。');
       if (value.providerId !== current.providerId && !provider(value.providerId)) fail('PROVIDER_DISABLED', '运行固定的服务商连接已不存在。');
       const original = provider(value.providerId); if (!original || !original.enabled || original.archived) fail('PROVIDER_DISABLED', '运行固定的服务商连接已停用或归档。');
+      S.Credentials?.assertUsable('model',original.credentialRef);
+      S.Credentials?.assertUsable('model',value.provider?.credentialRef);
     }
     return current;
   }
@@ -2970,7 +3278,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   }
   const integer = (v, min, max, label) => { const n = Number(v); if (!Number.isInteger(n) || n < min || n > max) fail('CONFIG_INVALID', `${label}需为 ${min}–${max} 的整数。`); return n; };
   const decimal = (v, min, max, label) => { const n = Number(v); if (!Number.isFinite(n) || n < min || n > max) fail('CONFIG_INVALID', `${label}需在 ${min}–${max} 之间。`); return n; };
-  function saveProvider(input) {
+  function providerValue(input) {
     const old = input.id ? provider(input.id) : null; if (input.id && !old) fail('PROVIDER_NOT_FOUND', '连接不存在。');
     const name = String(input.name || '').trim(), baseUrl = String(input.baseUrl || '').trim().replace(/\/$/, '');
     if (!name) fail('CONFIG_INVALID', '请填写连接名称。');
@@ -2980,6 +3288,10 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
     const credentialRef = String(input.credentialRef || '').trim();
     if (credentialRef && !/^(env|vault|secret):[a-zA-Z][a-zA-Z0-9_./-]{0,119}$/.test(credentialRef)) fail('CREDENTIAL_REFERENCE_INVALID', '只接受 env:变量名、vault:路径 或 secret:标识。不要填写密钥正文。');
     const value = { id: old?.id || uid('provider'), name, template: input.template, protocol: input.protocol, baseUrl, auth: input.auth, credentialRef: input.auth === 'none' ? '' : credentialRef, apiVersion: String(input.apiVersion || '').trim().slice(0,80), timeoutMs: integer(input.timeoutMs ?? 60000, 1000, 300000, '超时毫秒'), retries: integer(input.retries ?? 1, 0, 5, '重试次数'), enabled: input.enabled !== false, archived: old?.archived || false, revision: (old?.revision || 0) + 1, validation: null, createdAt: old?.createdAt || now(), updatedAt: now() };
+    return value;
+  }
+  function saveProvider(input) {
+    const value = providerValue(input);
     return mutate(d => { const i = d.providers.findIndex(p => p.id === value.id); if (i >= 0) d.providers[i] = value; else d.providers.push(value); return value; });
   }
   function normalConfig(type, cfg) {
@@ -3013,6 +3325,15 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   function saveModel(input) {
     const value = modelValue(input);
     return mutate(d => { const i = d.models.findIndex(m => m.id === value.id); if (i >= 0) d.models[i] = value; else d.models.push(value); return value; });
+  }
+  function importTemplate(model, connection, name, origin) {
+    // One transaction; do not import an authorization or a live connection.
+    return mutate(d => {
+      const p=providerValue({...connection,id:undefined,name:(name||model.name)+' · 连接',credentialRef:'',auth:'reference',enabled:false});
+      d.providers.push(p);
+      const m=modelValue({...model,id:undefined,name:name||model.name,providerId:p.id,enabled:false,declaration:'跨项目固定配置副本；请重新配置凭证并启用'});
+      m.origin=copy(origin);d.models.push(m);return m;
+    });
   }
   function dependencies(id) {
     const m = rawModel(id); if (!m) return [];
@@ -3061,11 +3382,13 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
     if (!['success','timeout','unauthorized'].includes(scenario)) fail('CONFIG_INVALID', '未知的连接校验场景。');
     const p = provider(id); if (!p) fail('PROVIDER_NOT_FOUND', '连接不存在。'); if (!p.enabled || p.archived) fail('PROVIDER_DISABLED', '连接已停用或归档。');
     if (!checkUrl(p.baseUrl)) fail('CONFIG_INVALID', '连接地址格式不正确。');
+    S.Credentials?.assertUsable('model',p.credentialRef);
     const result = { status: scenario === 'timeout' ? 'timeout' : scenario === 'unauthorized' ? 'unauthorized' : 'passed', simulated: true, testedAt: now(), message: scenario === 'timeout' ? '模拟超时；可调整超时或重试。' : scenario === 'unauthorized' ? '模拟凭证被拒绝；请检查引用配置。' : '地址与配置校验通过；真实服务连通性尚未验证。' };
     return mutate(d => { d.providers.find(x => x.id === id).validation = result; return result; });
   }
   function discover(id) {
     const p = provider(id); if (!p || !p.enabled || p.archived) fail('PROVIDER_DISABLED', '请先启用服务商连接。');
+    S.Credentials?.assertUsable('model',p.credentialRef);
     const candidates = p.protocol === 'anthropic' ? ['llm'] : p.protocol === 'ollama' ? ['llm','embedding'] : ['cohere','jina','voyage'].includes(p.protocol) ? (p.protocol === 'cohere' ? ['llm','embedding','rerank'] : ['embedding','rerank']) : p.protocol === 'custom' ? Object.keys(types) : ['llm','embedding'];
     return candidates.map(type => ({ providerId: id, type, name: p.name + ' · ' + types[type] + '示例', modelId: 'discovered-demo-' + type, adapter: recommendedAdapter(p.protocol,type) || 'custom-http', requestPath: p.protocol === 'custom' ? '/demo/' + type : '', capabilities: Object.fromEntries(Object.keys(caps).map(c => [c,false])), config: typeConfig(type), enabled: true, simulated: true, imported: data().models.some(m => m.providerId === id && m.modelId === 'discovered-demo-' + type && m.type === type) }));
   }
@@ -3089,7 +3412,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
     const record = { id: uid('model-test'), modelId: m.id, modelName: m.name, modelType: m.type, snapshot: snap, input: copy(input), output: error ? null : output, error, status: error ? 'failed' : 'succeeded', createdAt: now(), durationMs: Math.max(1,now()-started), simulated: true };
     return mutate(d => { d.debugRuns.unshift(record); d.debugRuns = d.debugRuns.slice(0,100); return record; });
   }
-  S.Models = { types: freeze(copy(types)), adapters: freeze(copy(adapters)), templates: freeze(copy(templates)), list, resolve, validate, snapshot, assertAvailable, defaults, setDefault, displayName: value => rawModel(value)?.name || (typeof value === 'string' ? value : value?.name || '未选择模型'), saveProvider, saveModel, setStatus, remove, dependencies, references: dependencies, providerReferences, testConnection, discover, importDiscovered, debug, providers: () => copy(data().providers), recommendedAdapter, typeConfig: type => copy(typeConfig(type)), openModel, openProvider };
+  S.Models = { types: freeze(copy(types)), adapters: freeze(copy(adapters)), templates: freeze(copy(templates)), list, resolve, validate, snapshot, assertAvailable, defaults, setDefault, displayName: value => rawModel(value)?.name || (typeof value === 'string' ? value : value?.name || '未选择模型'), saveProvider, saveModel, importTemplate, setStatus, remove, dependencies, references: dependencies, providerReferences, testConnection, discover, importDiscovered, debug, providers: () => copy(data().providers), recommendedAdapter, typeConfig: type => copy(typeConfig(type)), openModel, openProvider };
 
   const ui = { q: '', providerQ: '', discovery: null, pending: null, debugInput: {}, debugResult: {}, modelDraft: null, providerDraft: null };
   const attrs = (id, extra = '') => `data-id="${E(id)}" ${extra}`;
@@ -3582,6 +3905,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
       const manifest = JSON.parse(form.elements.namedItem('manifest').value);
       if (!manifest.name || !Array.isArray(manifest.actions) || !manifest.actions.length) throw new Error('清单需要 name 和至少一个 actions 动作。');
       if (manifest.actions.length > 12) throw new Error('演示清单最多支持 12 个动作。');
+      if (new Set(manifest.actions.map(a=>a.name)).size !== manifest.actions.length) throw new Error('插件动作名称不能重复。');
       const allowed = ['docs.create', 'table.upsert', 'web.search', 'web.fetch', 'workspace.write'];
       manifest.actions.forEach(action => { if (!action.name || !allowed.includes(action.adapterId)) throw new Error('每个动作需要名称与受支持的 adapterId。'); const base = getTool(action.adapterId); if (!base) throw new Error('缺少该动作的模拟适配器。'); if (action.inputSchema && JSON.stringify(action.inputSchema) !== JSON.stringify(base.inputSchema)) throw new Error('此演示导入器只支持适配器原有 Schema。移除自定义 inputSchema，或使用能力清单显示的完整契约。'); });
       const id = S.uid('plugin'), conn = { id: id + '-default', name: manifest.name + ' · 默认实例', kind: 'plugin', pluginId: id, transport: 'plugin', location: '隔离容器', endpoint: 'workspace://imports/' + id, status: 'ready', enabled: true, credentialRef: '', authMode: 'none', authType: 'none', version: '1.0.0' };
@@ -3653,7 +3977,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
     return chunks;
   }
   function knowledgeSnapshot(kb) {
-    return clone({ id: kb.id, name: kb.name, description: kb.description, version: kb.version, revision: kb.revision, settings: kb.settings, documents: kb.documents, created: kb.updated });
+    return clone({ id: kb.id, name: kb.name, description: kb.description, version: kb.version, revision: kb.revision, settings: kb.settings, documents: kb.documents, origin: kb.origin, created: kb.updated });
   }
   function rememberKnowledge(kb, reason) {
     kb.revision = (kb.revision || 0) + 1;
@@ -3663,7 +3987,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
     kb.versions.push({ ...knowledgeSnapshot(kb), reason });
   }
   function contentSnapshot(item) {
-    return clone({ id: item.id, type: item.type, name: item.name, title: item.name, description: item.description, content: item.content, template: item.content, version: item.version, arguments: item.arguments || [], dependencies: item.dependencies || [], tags: item.tags || [], created: item.updated });
+    return clone({ id: item.id, type: item.type, name: item.name, title: item.name, description: item.description, content: item.content, template: item.content, version: item.version, arguments: item.arguments || [], dependencies: item.dependencies || [], tags: item.tags || [], origin: item.origin, created: item.updated });
   }
   function rememberContent(item, reason) {
     item.updated = now(); item.versions = item.versions || [];
@@ -3688,6 +4012,27 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
     rememberKnowledge(kb, old ? '更新知识库配置与分段' : '创建知识库');
     if (!old) store.knowledge.unshift(kb);
     commit(); return kb;
+  };
+  // Import a selected source revision as a new independent knowledge base.
+  // Validate all documents before the single persistence operation.
+  C.importKnowledgeSnapshot = (source, name, origin) => {
+    name = labelValid(name || source.name, '知识库名称');
+    if (store.knowledge.some(k => k.name === name || (k.aliases || []).includes(name))) throw fail('NAME_EXISTS','知识库名称已存在。');
+    const description = text(source.description).slice(0,500);
+    if (hasSecret(name+description)) throw fail('SECRET_CONTENT','名称或说明中疑似包含访问凭据。');
+    const settings = settingsValid({chunkSize:source.settings?.chunkSize??500,overlap:source.settings?.overlap??50,retrievalMode:'keyword'});
+    const docs = source.documents || [];
+    if (!Array.isArray(docs) || docs.length>200) throw fail('DOCUMENT_LIMIT','最多导入 200 份资料。');
+    let total=0;
+    const documents=docs.map(doc=>{
+      const content=bodyValid(doc.content), title=labelValid(doc.name,'资料名称');
+      total+=content.length;
+      if (total>1000000) throw fail('DOCUMENT_LIMIT','导入正文总量最多 1,000,000 字符。');
+      const item={id:S.uid('document'),name:title,content,sourceType:'text',status:'ready',created:now(),updated:now()};
+      item.chunks=splitDocument(item,settings);return item;
+    });
+    const kb={id:S.uid('knowledge'),name,description,tags:tags(source.tags),settings,documents,revision:0,version:'1.0.0',created:now(),status:'active',versions:[],origin:clone(origin)};
+    rememberKnowledge(kb,'跨项目版本副本；重新配置向量与重排模型');store.knowledge.unshift(kb);commit();return kb;
   };
   C.addDocument = (id, values) => {
     const kb = C.getKnowledge(id); if (!kb || kb.status === 'archived') throw fail('KNOWLEDGE_UNAVAILABLE', '知识库不存在或已归档，请恢复后再维护资料。');
@@ -3801,6 +4146,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
     Object.assign(item, { name, description: text(values.description).slice(0, 500), content, tags: tags(values.tags), dependencies: tags(values.dependencies) });
     item.arguments = [...new Set([...content.matchAll(/{{\s*([^{}]+?)\s*}}/g)].map(m => m[1].trim()))].map(name => ({ name, required: true }));
     if (values.marketId) item.marketId = values.marketId;
+    if (values.origin && !old) item.origin = { projectId: String(values.origin.projectId), resourceId: String(values.origin.resourceId), version: String(values.origin.version) };
     rememberContent(item, old ? '保存内容更新' : '创建内容');
     if (!old) store.contents.unshift(item); commit(); return item;
   };
@@ -4244,6 +4590,8 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   const ui={drafts:{},tabs:{},chatText:{},showCapabilities:true,capFilter:'all',capQuery:'',configQuery:''};
   const ids={search:'web.search',write:'workspace.write',docs:'docs.create',table:'table.upsert',fetch:'web.fetch'};
   const adapter=tool=>tool?.adapterId||tool?.originToolId||tool?.id;
+  const modePolicy=Object.freeze({chat:{write:false,delegate:false},plan:{write:false,delegate:false},execute:{write:true,delegate:true}});
+  const T=(zh,en)=>window.StudioAppearance?.getLocale()==='en-US'?en:zh;
   const configKeys=['id','name','description','icon','color','model','modelSnapshot','modelBindingMigration','version','status','tags','prompt','knowledge','knowledgeSnapshot','legacyKnowledgeReference','tools','temperature','requireApproval','capabilityBindings','contextBindings','executionPolicy','memoryPolicy'];
   const cleanConfig=value=>Object.fromEntries(configKeys.filter(k=>value[k]!==undefined).map(k=>[k,clone(value[k])]));
   const agentBy=id=>S.state.agents.find(a=>a.id===id);
@@ -4411,6 +4759,8 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
       const results=[];const p=snap.executionPolicy;
       try{
         if(preparationError)throw preparationError;
+        if(!Object.prototype.hasOwnProperty.call(modePolicy,mode))throw Object.assign(new Error('未知 Agent 运行模式'),{code:'MODE_INVALID'});
+        if(mode==='chat'&&(selected.some(b=>run.capabilitySnapshots.tools.find(t=>t.id===b.toolId)?.write)||options.contextCall||session?.contextCall))throw Object.assign(new Error('Chat 模式只执行只读检索；写入或委派请切换到 Agent，仍需遵守原有授权和审批。'),{code:'MODE_REQUIRES_AGENT'});
         watchTimer=setInterval(()=>{const now=Date.now();if(run.status==='running')activeMs+=now-lastClock;lastClock=now;if(activeMs>=Math.max(1000,p.timeoutMs)&&['running','waiting'].includes(run.status)){R.stop(run.id);run.error='达到本次 Agent 执行时限';run.errorCode='AGENT_TIMEOUT';run.outcome.message='达到执行时限，已停止后续步骤';clearInterval(watchTimer);S.save();}},250);
         R.event(run,'agent.turn.started',{agentId:a.id,mode,toolMode:p.toolMode,tools:run.plannedTools,version:snap.version});
         const inputTokens=Math.ceil((goal.length+(snap.prompt||'').length)/1.6);if(inputTokens>p.maxTokens)throw Object.assign(new Error('输入超过本次 Token 预算'),{code:'TOKEN_BUDGET'});
@@ -4473,7 +4823,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
     });
     return run;
   }
-  S.AgentStudio={freezeSnapshot,start:startAgent,planTools,saveConfig:save,sessionFor,invalidateDraft:id=>{delete ui.drafts[id];}};
+  S.AgentStudio={freezeSnapshot,start:startAgent,planTools,modePolicy,saveConfig:save,sessionFor,invalidateDraft:id=>{delete ui.drafts[id];}};
   S.startRun=(options={})=>{const agent=S.state.agents.find(a=>a.id===options.agent||a.name===options.agent)||S.state.agents[0];const run=startAgent({agentId:agent?.id,goal:options.goal||options.title||'新的任务',mode:'execute',model:options.model});if(run)queueMicrotask(()=>S.go('task',{id:run.id}));return run;};
   function chatMessages(a,session){return session.messages.length?session.messages.map((m,i)=>{
     const run=m.runId&&R.findRun(m.runId),content=run?.answer||m.content||'',pending=run?.pending;
@@ -4481,7 +4831,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   }).join(''):`<div class="as-chat-welcome"><span class="as-welcome-symbol">${S.icon('agent',33)}</span><span class="eyebrow">AGENT CHAT</span><h2>开始一次对话</h2><p>输入目标后，使用右侧配置的工具与上下文执行任务。<br>调用过程和结果可在运行记录中查看。</p><div class="as-chat-suggestions">${[['globe','检索并总结 Agent 平台的最新方向。'],['folder','研究 Agent 工作流，把结论写入 /知识库/行业观察。'],['workflow','先规划一个资料整理与归档的任务。']].map(([icon,text])=>`<button type="button" data-action="as-chat-example" data-text="${E(text)}" data-mode="${icon==='workflow'?'plan':'chat'}">${S.icon(icon,18)}<span>${E(text)}</span>${S.icon('arrow',13)}</button>`).join('')}</div></div>`;}
   function capabilityPanel(a,session){const snap=savedConfig(a),enabled=session.capabilityBindings.filter(b=>b.enabled!==false),run=[...session.messages].reverse().map(m=>m.runId&&R.findRun(m.runId)).find(Boolean);return `<aside class="as-chat-capabilities" aria-label="本次能力与执行"><div class="as-cap-heading"><div><h2>本次能力</h2><p>会话设置 · 下一轮生效</p></div>${S.btn('选择','as-add-capability',{variant:'ghost',small:true,icon:'plus',attrs:'data-target="session"'})}</div><div class="as-chat-cap-section"><div class="as-subhead"><h3>工具</h3><span>${enabled.length} 项启用</span></div>${session.capabilityBindings.map(b=>bindingTile(b,'session',false)).join('')||'<p class="as-empty-note">未绑定工具，仍可进行对话。</p>'}</div><div class="as-chat-cap-section"><div class="as-subhead"><h3>上下文与工作流</h3>${S.btn('添加','as-add-context',{variant:'ghost',small:true,attrs:'data-target="session"'})}</div>${contextTiles(session,'session')}</div><div class="as-chat-cap-section"><div class="field"><label class="field-label" for="as-chat-model">对话模型</label><select class="select" id="as-chat-model">${modelOptions(session.model)}</select></div><div class="field"><label class="field-label" for="as-chat-tool-mode">工具选择</label><select class="select" id="as-chat-tool-mode">${[['auto','自动选择'],['required','指定工具'],['none','禁用调用']].map(([v,l])=>`<option value="${v}" ${session.toolMode===v?'selected':''}>${l}</option>`).join('')}</select></div>${session.toolMode==='required'?`<div class="field"><label class="field-label" for="as-chat-forced">指定工具</label><select class="select" id="as-chat-forced"><option value="">请选择工具</option>${enabled.map(b=>`<option value="${E(b.toolId)}" ${session.forcedToolId===b.toolId?'selected':''}>${E(titleOf(R.getTool(b.toolId)))}</option>`).join('')}</select></div>`:''}${session.contextBindings.some(b=>['workflow','agent'].includes(b.kind))?`<div class="field"><label class="field-label" for="as-chat-context-call">本轮调用对象</label><select class="select" id="as-chat-context-call"><option value="">由 Agent 使用工具处理</option>${session.contextBindings.filter(b=>['workflow','agent'].includes(b.kind)).map(b=>`<option value="${E(b.kind+':'+b.id)}" ${session.contextCall===b.kind+':'+b.id?'selected':''}>${E(titleOf(contextDef(b)))}</option>`).join('')}</select></div>`:''}<div class="field"><label class="field-label" for="as-chat-destination">默认写入位置</label><input class="input" id="as-chat-destination" value="${E(session.destination)}"></div><details class="as-chat-debug"><summary>调试本轮调用</summary><div class="field"><label class="field-label" for="as-chat-scenario">测试场景</label><select class="select" id="as-chat-scenario">${[['success','成功响应'],['empty','空结果'],['tool_error','工具错误'],['timeout','超时'],['schema_error','输出结构不匹配']].map(([v,l])=>`<option value="${v}" ${session.scenario===v?'selected':''}>${l}</option>`).join('')}</select></div><div class="field"><label class="field-label" for="as-chat-args">覆盖工具实参（JSON）</label><textarea class="textarea mono" id="as-chat-args" style="resize:none" rows="5" placeholder="留空时从目标生成示例实参">${E(session.argsText||'')}</textarea><p class="field-help">建议配合“指定工具”使用，参数将按工具 Schema 校验。</p></div></details></div><div class="as-chat-cap-section"><div class="as-subhead"><h3>执行边界</h3><a href="#agent?id=${encodeURIComponent(a.id)}" class="text-link">配置</a></div><div class="as-budget-list"><span>模型 <strong>${E(modelName(session.model||snap.model))}</strong></span><span>工具轮次 <strong>${snap.executionPolicy.maxRounds}</strong></span><span>Token 上限 <strong>${snap.executionPolicy.maxTokens.toLocaleString()}</strong></span><span>写入操作 <strong>执行前确认</strong></span></div>${run?`<a class="as-last-run" href="#task?id=${encodeURIComponent(run.id)}&tab=trace">${S.icon('workflow',16)}<span>本轮调用链<small>${(run.toolCalls||[]).length} 次工具调用 · ${Number(run.tokens||0)} 估算 Token</small></span>${S.icon('arrow',13)}</a>`:''}</div><div class="as-cap-footer">${S.btn('将会话能力存为草稿','as-session-to-draft',{variant:'secondary',small:true,icon:'edit'})}${S.btn('恢复发布配置','as-reset-session',{variant:'ghost',small:true,icon:'refresh'})}</div></aside>`;}
   function refreshChat(){if(S.route!=='chat')return;const active=document.activeElement,id=active?.id,start=active?.selectionStart,end=active?.selectionEnd;const scroll=document.getElementById('as-message-scroll'),near=scroll?scroll.scrollHeight-scroll.scrollTop-scroll.clientHeight<100:true,top=scroll?.scrollTop||0;S.render();const updated=document.getElementById('as-message-scroll');if(updated)updated.scrollTop=near?updated.scrollHeight:top;if(id){const next=document.getElementById(id);if(next){next.focus({preventScroll:true});if(typeof next.setSelectionRange==='function'&&start!=null)try{next.setSelectionRange(start,end);}catch(_){}}}}
-  S.page('chat',{title:'Agent Chat',section:'开始创造',render(){const a=agentNow();if(!a)return S.empty('先创建智能体','为你的工作配置一个搭档。',S.btn('创建智能体','new-agent'));const session=sessionFor(a),active=busy(session),snapshot=savedConfig(a);return `<div class="as-chat-page ${ui.showCapabilities?'with-capabilities':''}"><header class="as-chat-header"><div class="row">${avatar(a)}<div><h1>${E(a.name)}</h1><p>${E(modelName(session.model||snapshot.model))} · ${E(a.publishedConfig?snapshot.version:'未发布草稿')} · 本地模拟</p></div></div><div class="row">${S.btn('历史会话','as-history',{variant:'ghost',icon:'clock',small:true})}${S.btn('新会话','as-new-session',{variant:'secondary',icon:'plus',small:true})}<button type="button" class="icon-btn ${ui.showCapabilities?'is-active':''}" data-action="as-toggle-panel" aria-label="${ui.showCapabilities?'收起':'展开'}本次能力" aria-pressed="${ui.showCapabilities}">${S.icon('layers',18)}</button><a href="#agent?id=${encodeURIComponent(a.id)}" class="icon-btn" aria-label="配置智能体">${S.icon('settings',18)}</a></div></header><div class="as-chat-workspace"><section class="as-conversation"><div class="as-conversation-bar"><span>${S.icon('book',13)}${E(S.ContentStore?.getKnowledge(snapshot.knowledge)?.name||(snapshot.knowledge?'知识库待重新选择':'未绑定知识库'))}</span><span>${S.icon('plug',13)}${session.capabilityBindings.filter(b=>b.enabled!==false).length} 项工具</span><span>${S.icon('shield',13)}写入前确认</span></div><div class="as-message-scroll" id="as-message-scroll" aria-live="polite" aria-relevant="additions text">${chatMessages(a,session)}</div><form class="as-chat-composer" data-form="as-send" novalidate><label class="as-sr-only" for="as-chat-input">发送消息</label><textarea id="as-chat-input" style="resize:none" placeholder="描述目标；也可以告诉我把结果放在哪里…" rows="3">${E(ui.chatText[session.id]||'')}</textarea><p class="field-error" id="as-chat-input-error" role="alert"></p><div class="as-composer-bottom"><div class="mode-pill" aria-label="Agent 模式">${[['chat','对话'],['plan','规划'],['execute','执行']].map(([v,l])=>`<button type="button" data-action="as-chat-mode" data-id="${v}" class="${session.mode===v?'active':''}" aria-pressed="${session.mode===v}">${l}</button>`).join('')}</div><div class="row"><button type="button" class="icon-btn" data-action="as-add-capability" data-target="session" aria-label="选择本轮工具">${S.icon('plug',17)}</button>${active?S.btn('停止','as-stop',{variant:'secondary',small:true,icon:'stop'}):S.btn('发送','as-send',{small:true,icon:'arrow'})}</div></div></form><div class="as-composer-caption"><span>Enter 发送 · Shift + Enter 换行</span><span>${session.mode==='plan'?'先形成计划，点击开始后执行':'工具使用本地适配器模拟'}</span></div></section>${ui.showCapabilities?capabilityPanel(a,session):''}</div></div>`;},mount(root){
+  S.page('chat',{title:'Agent Chat',section:'开始创造',render(){const a=agentNow();if(!a)return S.empty('先创建智能体','为你的工作配置一个搭档。',S.btn('创建智能体','new-agent'));const session=sessionFor(a),active=busy(session),snapshot=savedConfig(a);return `<div class="as-chat-page ${ui.showCapabilities?'with-capabilities':''}"><header class="as-chat-header"><div class="row">${avatar(a)}<div><h1>${E(a.name)}</h1><p>${E(modelName(session.model||snapshot.model))} · ${E(a.publishedConfig?snapshot.version:'未发布草稿')} · 本地模拟</p></div></div><div class="row">${S.btn('历史会话','as-history',{variant:'ghost',icon:'clock',small:true})}${S.btn('新会话','as-new-session',{variant:'secondary',icon:'plus',small:true})}<button type="button" class="icon-btn ${ui.showCapabilities?'is-active':''}" data-action="as-toggle-panel" aria-label="${ui.showCapabilities?'收起':'展开'}本次能力" aria-pressed="${ui.showCapabilities}">${S.icon('layers',18)}</button><a href="#agent?id=${encodeURIComponent(a.id)}" class="icon-btn" aria-label="配置智能体">${S.icon('settings',18)}</a></div></header><div class="as-chat-workspace"><section class="as-conversation"><div class="as-conversation-bar"><span>${S.icon('book',13)}${E(S.ContentStore?.getKnowledge(snapshot.knowledge)?.name||(snapshot.knowledge?'知识库待重新选择':'未绑定知识库'))}</span><span>${S.icon('plug',13)}${session.capabilityBindings.filter(b=>b.enabled!==false).length} 项工具</span><span>${S.icon('shield',13)}写入前确认</span></div><div class="as-message-scroll" id="as-message-scroll" aria-live="polite" aria-relevant="additions text">${chatMessages(a,session)}</div><form class="as-chat-composer" data-form="as-send" novalidate><label class="as-sr-only" for="as-chat-input">发送消息</label><textarea id="as-chat-input" style="resize:none" placeholder="描述目标；也可以告诉我把结果放在哪里…" rows="3">${E(ui.chatText[session.id]||'')}</textarea><p class="field-error" id="as-chat-input-error" role="alert"></p><div class="as-composer-bottom"><div class="mode-pill" aria-label="Agent 模式">${[['chat',T('对话 Chat','Chat')],['plan',T('规划 Plan','Plan')],['execute',T('执行 Agent','Agent')]].map(([v,l])=>`<button type="button" data-action="as-chat-mode" data-id="${v}" class="${session.mode===v?'active':''}" aria-pressed="${session.mode===v}">${l}</button>`).join('')}</div><div class="row"><button type="button" class="icon-btn" data-action="as-add-capability" data-target="session" aria-label="选择本轮工具">${S.icon('plug',17)}</button>${active?S.btn('停止','as-stop',{variant:'secondary',small:true,icon:'stop'}):S.btn('发送','as-send',{small:true,icon:'arrow'})}</div></div></form><div class="as-composer-caption"><span>Enter 发送 · Shift + Enter 换行</span><span>${session.mode==='plan'?T('先生成计划，确认后执行','Review the plan before executing'):session.mode==='execute'?T('受权限、预算和审批约束的执行','Execution remains bounded by permissions, budget and approvals'):T('只读检索与对话，不执行写入或委派','Read-only chat and retrieval; no writes or delegation')}</span></div></section>${ui.showCapabilities?capabilityPanel(a,session):''}</div></div>`;},mount(root){
     const a=agentNow();if(!a)return;const session=sessionFor(a),input=root.querySelector('#as-chat-input');input.addEventListener('input',()=>{ui.chatText[session.id]=input.value;});input.addEventListener('keydown',ev=>{if(!ev.isComposing&&ev.key==='Enter'&&!ev.shiftKey){ev.preventDefault();S.actions['as-send']();}});
     const change=ev=>{const el=ev.target;if(el.dataset.asToggleTool){toggleBinding(session,el.dataset.asToggleTool);S.save();refreshChat();return;}const map={'as-chat-model':'model','as-chat-tool-mode':'toolMode','as-chat-forced':'forcedToolId','as-chat-context-call':'contextCall','as-chat-destination':'destination','as-chat-scenario':'scenario','as-chat-args':'argsText'};if(map[el.id]){session[map[el.id]]=el.value;S.save();if(el.id==='as-chat-tool-mode')refreshChat();}};
     root.addEventListener('change',change);let queued=false;const unsubscribe=R.subscribe(run=>{if(run.conversationId!==session.id&&run.id!==session.messages.map(m=>R.findRun(m.runId)?.activeChildRunId).find(id=>id===run.id))return;if(queued)return;queued=true;queueMicrotask(()=>{queued=false;if(S.route==='chat'&&currentSession()?.id===session.id&&!document.getElementById('app-dialog')?.open)refreshChat();});});
@@ -4493,7 +4843,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   }
   S.action('as-send',()=>sendMessage());S.form('as-send',()=>sendMessage());
   S.action('as-chat-example',el=>{const session=currentSession();session.mode=el.dataset.mode;sendMessage(el.dataset.text);});
-  S.action('as-chat-mode',el=>{currentSession().mode=el.dataset.id;S.save();refreshChat();});
+  S.action('as-chat-mode',el=>{const session=currentSession();if(!session||!Object.prototype.hasOwnProperty.call(modePolicy,el.dataset.id))return;if(busy(session)){S.toast(T('请先完成或停止本轮运行','Finish or stop the current run first'),'warning');return;}session.mode=el.dataset.id;S.save();refreshChat();});
   S.action('as-toggle-panel',()=>{ui.showCapabilities=!ui.showCapabilities;refreshChat();});
   S.action('as-stop',()=>{const session=currentSession(),run=[...session.messages].reverse().map(m=>m.runId&&R.findRun(m.runId)).find(r=>r&&['running','waiting'].includes(r.status));if(run){R.stop(run.id);if(run.activeChildRunId)R.stop(run.activeChildRunId);S.toast('已停止本轮后续执行','info');refreshChat();}});
   S.action('as-new-session',()=>{const a=agentNow();const snap=savedConfig(a),session={id:S.uid('conversation'),agentId:a.id,title:'新的会话',messages:[],created:Date.now(),mode:'chat',model:snap.model,capabilityBindings:clone(snap.capabilityBindings),contextBindings:clone(snap.contextBindings),toolMode:snap.executionPolicy.toolMode,forcedToolId:snap.executionPolicy.forcedToolId||'',scenario:'success',destination:'/知识库/行业观察',argsText:''};S.state.chatSessions.unshift(session);S.save();S.go('chat',{agent:a.id,session:session.id});});
@@ -5840,6 +6190,115 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
 })();
 
 </script>
-  <script>window.addEventListener('DOMContentLoaded', function () { StudioAuth.attach(Studio); StudioSpaces.attach(Studio); StudioAppearance.attach(Studio); Studio.init(); });</script>
+  <script>
+/* credentials.js */
+(function () {
+  'use strict';
+  const S = window.Studio, E = S.escape;
+  const T = (zh,en) => window.StudioAppearance?.getLocale() === 'en-US' ? en : zh;
+  const kindName = kind => kind === 'model' ? T('模型凭证','Model credential') : T('工具凭证','Tool credential');
+  const records = () => S.state.credentialRegistry || (S.state.credentialRegistry = []);
+  const valid = (kind, ref) => kind === 'model' ? /^(env|vault|secret):[a-zA-Z][a-zA-Z0-9_./-]{0,119}$/.test(ref) : kind === 'tool' && /^(?:(?:secretRef\.|oauthRef\.|credentialRef\.)[a-zA-Z0-9_.-]{1,80}|cred-[a-zA-Z0-9_.-]{1,80})$/.test(ref);
+  const owners = kind => kind === 'model' ? (S.Models?.providers() || []).filter(x=>!x.archived) : (S.Runtime?.connections || []);
+  const find = (kind,ref) => records().find(x=>x.kind===kind&&x.ref===ref);
+  const fail = (code,message) => { throw Object.assign(new Error(message),{code}); };
+  function mutate(fn) {
+    const old=JSON.parse(JSON.stringify(records()));
+    try {
+      const result=fn();
+      if(S.save()===false)fail('STORAGE_UNAVAILABLE',T('凭证元数据保存失败','Credential metadata was not saved'));
+      return result;
+    } catch(error) { S.state.credentialRegistry=old; throw error; }
+  }
+  function list() {
+    const result=records().map(x=>({...x}));
+    for(const kind of ['model','tool'])for(const owner of owners(kind)){
+      const ref=owner.credentialRef;
+      if(ref&&!result.some(x=>x.kind===kind&&x.ref===ref))result.push({kind,ref,name:ref,status:'active',revision:1,createdAt:null,verifiedAt:null,legacy:true});
+    }
+    return result.map(item=>({...item,bindings:owners(item.kind).filter(x=>x.credentialRef===item.ref).map(x=>({id:x.id,name:x.name,kind:x.kind,pluginId:x.pluginId}))}));
+  }
+  function register(kind,ref,name) {
+    ref=String(ref||'').trim();name=String(name||'').trim();
+    if(!valid(kind,ref))fail('CREDENTIAL_REFERENCE_INVALID',T('只允许受支持的凭证引用格式，不能填写密钥正文','Use a supported reference, not the secret value'));
+    if(!name||name.length>80)fail('CREDENTIAL_NAME_INVALID',T('名称须为 1–80 个字符','Name must contain 1–80 characters'));
+    if(find(kind,ref))fail('CREDENTIAL_EXISTS',T('该引用已登记','Reference already exists'));
+    return mutate(()=>{const entry={kind,ref,name,status:'active',revision:1,createdAt:Date.now(),verifiedAt:null};records().push(entry);return entry;});
+  }
+  function isUsable(kind,ref){return !ref||find(kind,ref)?.status!=='revoked';}
+  function assertUsable(kind,ref){if(!isUsable(kind,ref))fail('CREDENTIAL_REVOKED',T('凭证引用已撤销，请绑定新的有效引用','Credential reference revoked; bind an active reference'));}
+  function change(kind,ref,operation) {
+    const existing=list().find(x=>x.kind===kind&&x.ref===ref);
+    if(!existing)fail('CREDENTIAL_MISSING',T('凭证引用不存在','Credential reference not found'));
+    if(operation!=='revoke')assertUsable(kind,ref);
+    if(operation==='verify'&&!valid(kind,ref))fail('CREDENTIAL_REFERENCE_INVALID',T('引用格式无效','Invalid reference format'));
+    return mutate(()=>{
+      let entry=find(kind,ref);
+      if(!entry){entry={kind,ref,name:existing.name,status:'active',revision:1,createdAt:Date.now(),verifiedAt:null};records().push(entry);}
+      if(operation==='rotate'){entry.revision++;entry.verifiedAt=null;entry.rotatedAt=Date.now();}
+      else if(operation==='revoke'){entry.status='revoked';entry.revokedAt=Date.now();}
+      else if(operation==='verify'){entry.verifiedAt=Date.now();}
+      return entry;
+    });
+  }
+  function bind(kind,ref,ownerId){
+    assertUsable(kind,ref);
+    if(!valid(kind,ref)||!list().some(x=>x.kind===kind&&x.ref===ref))fail('CREDENTIAL_MISSING',T('请先登记有效引用','Register a valid reference first'));
+    const owner=owners(kind).find(x=>x.id===ownerId);
+    if(!owner)fail('CONNECTION_NOT_FOUND',T('连接不存在','Connection not found'));
+    if(kind==='model')return S.Models.saveProvider({...owner,auth:'reference',credentialRef:ref});
+    const old={...owner};Object.assign(owner,{credentialRef:ref,authMode:'reference',authType:'reference',status:owner.enabled===false?'disabled':'unverified',lastTest:null});
+    if(S.save()===false){Object.assign(owner,old);fail('STORAGE_UNAVAILABLE',T('连接未保存','Connection was not saved'));}
+    return owner;
+  }
+  const attrs=(kind,ref)=>'data-kind="'+E(kind)+'" data-ref="'+E(ref)+'"';
+  const safe=fn=>el=>{try{return fn(el);}catch(error){S.toast(error.message,'warning');}};
+  const option=(value,label)=>'<option value="'+E(value)+'">'+E(label)+'</option>';
+  function refresh(){S.closeModal();S.render();}
+  function render(){
+    const items=list(),rows=items.map(item=>'<div class="space-choice"><div class="space-info"><strong data-no-i18n>'+E(item.name)+'</strong><small>'+E(kindName(item.kind))+' · <span class="mono" data-no-i18n>'+E(item.ref)+'</span> · r'+item.revision+'</small><small>'+E(item.bindings.map(x=>x.name).join('、')||T('未绑定连接','Not bound'))+'</small><small>'+E(item.verifiedAt?T('引用格式已校验（非真实连接）','Reference format checked (not a live connection)'):T('未校验','Not verified'))+'</small></div><div class="row" style="flex-wrap:wrap">'+S.badge(item.status==='revoked'?T('已撤销','Revoked'):T('有效','Active'),item.status==='revoked'?'danger':'success')+(item.status==='revoked'?'':S.btn(T('绑定连接','Bind'),'cred-bind',{variant:'secondary',small:true,attrs:attrs(item.kind,item.ref)})+S.btn(T('验证','Verify'),'cred-verify',{variant:'ghost',small:true,attrs:attrs(item.kind,item.ref)})+S.btn(T('轮换','Rotate'),'cred-rotate',{variant:'ghost',small:true,attrs:attrs(item.kind,item.ref)})+S.btn(T('撤销','Revoke'),'cred-revoke',{variant:'danger',small:true,attrs:attrs(item.kind,item.ref)}))+'</div></div>').join('');
+    return S.header('CREDENTIALS',T('凭证中心','Credentials'),T('统一管理当前项目的模型与工具凭证引用，不存放密钥正文。','Manage model and tool credential references in this project; no secret values are stored.'),S.btn(T('添加凭证引用','Add reference'),'cred-create',{icon:'plus'}))+'<section class="panel panel-pad"><div class="notice">'+E(T('原型仅模拟引用登记、格式校验、轮换记录和撤销。实际供应商密钥由外部系统管理；应用 API Key 在「发布与 API」单独维护。','This prototype simulates reference registration, format checks, rotation records and revocation. Real secrets are managed externally; application API keys are separate.'))+' <a href="#services">'+E(T('应用 API Key','Application API keys'))+'</a></div><div class="space-list" style="margin-top:16px">'+(rows||S.empty(T('还没有凭证引用','No references'),T('登记引用后即可绑定连接。','Register a reference to bind it to a connection.')) )+'</div></section>';
+  }
+  S.page('credentials',{title:'凭证中心',section:'资源管理',render});
+  S.action('cred-create',()=>S.modal({title:T('添加凭证引用','Add credential reference'),subtitle:T('只填写外部保管系统的标识，不输入真实密钥。','Enter only the external secret reference, never the secret.'),body:'<div class="field"><label class="field-label" for="cred-kind">'+E(T('用途','Purpose'))+'</label><select class="select" id="cred-kind">'+option('model',kindName('model'))+option('tool',kindName('tool'))+'</select></div>'+S.field(T('名称','Name'),{id:'cred-name',required:true})+S.field(T('凭证引用','Credential reference'),{id:'cred-ref',required:true,placeholder:'env:MODEL_API_KEY / secretRef.tool',help:T('模型：env:、vault:、secret:；工具：secretRef.、oauthRef.、credentialRef.、cred-。','Model: env:, vault:, secret:; tool: secretRef., oauthRef., credentialRef., cred-.')}),footer:S.btn('取消','modal-close',{variant:'secondary'})+S.btn('保存','cred-create-confirm')}));
+  S.action('cred-create-confirm',safe(()=>{register(document.getElementById('cred-kind').value,document.getElementById('cred-ref').value,document.getElementById('cred-name').value);refresh();}));
+  S.action('cred-bind',safe(el=>{const {kind,ref}=el.dataset;assertUsable(kind,ref);const items=owners(kind);if(!items.length){S.toast(T('请先创建连接','Create a connection first'),'warning');return;}S.modal({title:T('绑定连接','Bind connection'),subtitle:ref,body:'<div class="field"><label class="field-label" for="cred-owner">'+E(T('目标连接','Target connection'))+'</label><select class="select" id="cred-owner">'+items.map(x=>option(x.id,x.name)).join('')+'</select></div><p class="small muted">'+E(T('替换该连接的当前引用；绑定后需要重新验证连接。','Replace its current reference; revalidate the connection afterward.'))+'</p>',footer:S.btn('取消','modal-close',{variant:'secondary'})+S.btn('保存','cred-bind-confirm',{attrs:attrs(kind,ref)})});}));
+  S.action('cred-bind-confirm',safe(el=>{bind(el.dataset.kind,el.dataset.ref,document.getElementById('cred-owner').value);refresh();}));
+  S.action('cred-verify',safe(el=>{change(el.dataset.kind,el.dataset.ref,'verify');S.render();S.toast(T('引用格式校验通过，未调用外部服务','Reference format verified; no external call made'));}));
+  for(const operation of ['rotate','revoke']){
+    S.action('cred-'+operation,safe(el=>{const {kind,ref}=el.dataset,item=list().find(x=>x.kind===kind&&x.ref===ref);if(!item)return;S.modal({title:operation==='rotate'?T('记录一次凭证轮换？','Record a credential rotation?'):T('撤销凭证引用？','Revoke credential reference?'),subtitle:ref,body:'<p>'+E(operation==='rotate'?T('记录引用修订，实际密钥请在外部保管系统轮换。','Record the reference revision; rotate the actual secret externally.'):T('撤销后阻止使用此引用的新模型或工具调用，包括审批后继续执行的动作。','Revocation blocks new model or tool calls using the reference, including resumed approval actions.'))+'</p><p class="small muted">'+E(T('受影响连接：','Affected connections: ')+item.bindings.map(x=>x.name).join('、'))+'</p>',footer:S.btn('取消','modal-close',{variant:'secondary'})+S.btn(operation==='rotate'?T('确认轮换','Confirm rotation'):T('确认撤销','Confirm revocation'),'cred-'+operation+'-confirm',{variant:operation==='revoke'?'danger':'primary',attrs:attrs(kind,ref)})});}));
+    S.action('cred-'+operation+'-confirm',safe(el=>{change(el.dataset.kind,el.dataset.ref,operation);refresh();}));
+  }
+  S.Credentials={list,register,bind,change,isUsable,assertUsable,valid};
+})();
+
+</script>
+  <script>
+/* inbox.js */
+(function () {
+  'use strict';
+  const S=window.Studio,E=S.escape;
+  const T=(zh,en)=>window.StudioAppearance?.getLocale()==='en-US'?en:zh;
+  function list(){
+    const run=(S.pendingRuns?.()||[]).map(r=>({kind:'run',id:r.id,title:r.title,detail:r.pending?.title||T('运行等待确认','Run awaits approval'),actionable:true}));
+    const keys=(S.Publishing?.requests||[]).filter(x=>x.status==='pending').map(r=>({kind:'key',id:r.id,appId:r.appId,title:r.name,detail:S.Publishing.apps.find(a=>a.id===r.appId)?.name||T('应用服务','Application'),actionable:S.Publishing.actor==='owner'}));
+    const reviews=(S.state.reviews||[]).filter(r=>r.status==='pending'&&(S.state.role==='admin'||r.author==='我')).map(r=>({kind:'review',id:r.id,title:r.name,detail:'v'+(r.version||'1.0.0'),actionable:S.state.role==='admin'}));
+    return [...run,...keys,...reviews];
+  }
+  const sections=[['run','运行审批','Run approvals'],['key','API Key 申请','API Key requests'],['review','公共资源审核','Public resource reviews']];
+  function render(){
+    const entries=list();
+    return S.header('INBOX',T('待办与审批','Inbox & approvals'),T('统一查看待办，分别进入原有业务流程；审批权限和状态不会互相替代。','Review work in one place. Each approval keeps its original state and permissions.'))+
+      '<div class="notice">'+E(T('当前项目 · 本地演示。应用申请审批仅在所有者视角可操作，公共审核仅管理员可操作。','Current project · local demo. API requests require the owner view; public reviews require the admin view.'))+'</div>'+
+      sections.map(([kind,zh,en])=>{const items=entries.filter(x=>x.kind===kind);return '<section class="panel panel-pad" style="margin-top:16px"><div class="between"><h2>'+E(T(zh,en))+'</h2>'+S.badge(String(items.length),'neutral')+'</div><div class="space-list" style="margin-top:12px">'+(items.length?items.map(x=>'<div class="space-choice"><div class="space-info"><strong data-no-i18n>'+E(x.title)+'</strong><small data-no-i18n>'+E(x.detail)+'</small></div><div class="row">'+S.badge(x.actionable?T('待处理','Action required'):T('等待审批','Awaiting review'),x.actionable?'warning':'neutral')+S.btn(x.actionable?T('查看并处理','Review'):T('查看详情','View details'),'inbox-open',{variant:'secondary',small:true,attrs:'data-kind="'+E(x.kind)+'" data-id="'+E(x.id)+'"'})+'</div></div>').join(''):S.empty(T('暂无待办','No pending items'),T('这里会显示需要处理的申请。','Pending items will appear here.')) )+'</div></section>';}).join('');
+  }
+  S.page('inbox',{title:'待办与审批',section:'运行与改进',render});
+  S.action('notifications',()=>S.go('inbox'));
+  S.action('inbox-open',el=>{const item=list().find(x=>x.kind===el.dataset.kind&&x.id===el.dataset.id);if(!item){S.toast(T('待办状态已变化','Item has changed'),'warning');S.render();return;}if(item.kind==='run')S.go('task',{id:item.id});else if(item.kind==='key')S.go('service',{id:item.appId,tab:'keys'});else S.go('review');});
+  S.Inbox={list,count:()=>list().filter(x=>x.actionable).length};
+})();
+
+</script>
+  <script>window.addEventListener('DOMContentLoaded', function () { StudioAuth.attach(Studio); StudioSpaces.attach(Studio); StudioProjects.attach(Studio); StudioAppearance.attach(Studio); Studio.init(); });</script>
 </body>
 </html>
