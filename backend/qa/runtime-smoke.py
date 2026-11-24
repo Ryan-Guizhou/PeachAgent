@@ -226,7 +226,7 @@ try:
                     if line.startswith(b"data: "):
                         event=json.loads(line[6:])
                         if event["eventType"]=="delta":
-                            assert not EARLY_DELTA_TIMEOUT.is_set(),("First delta buffered until upstream terminal","durableBeforeTail",durable.is_set(),"headers",dict(response.headers))
+                            assert not EARLY_DELTA_TIMEOUT.is_set(),("First delta buffered until upstream terminal","durableBeforeTail",durable.is_set(),"transportHeaders",{name:response.headers.get(name) for name in ("Content-Type","Transfer-Encoding","Content-Length","X-Accel-Buffering")})
                             assert event["payload"]["text"]=="Early visible fragment"
                             seen=True;EARLY_DELTA_RELEASE.set()
     finally:
