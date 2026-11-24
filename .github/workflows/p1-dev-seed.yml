@@ -1,0 +1,104 @@
+name: P1 development seed
+on:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'database/**'
+      - 'compose.dev.yml'
+      - '.github/workflows/p1-dev-seed.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  seed:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        mysql: ['5.7.44', '8.4']
+    env:
+      MYSQL_IMAGE: mysql:${{ matrix.mysql }}
+      MYSQL_ROOT_PASSWORD: qa-only-root
+      DB_USER: peachagent
+      DB_PASSWORD: qa-only-db
+      REDIS_PASSWORD: qa-only-redis
+      DB_URL: jdbc:mysql://127.0.0.1:3306/peachagent
+      PUBLIC_ORIGIN: http://localhost:8080
+      COOKIE_SECURE: 'false'
+      MANAGEMENT_HEALTH_MAIL_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: backend/**/pom.xml
+      - name: Build API
+        run: mvn -B -f backend/pom.xml -DskipTests package
+      - name: Start isolated database and Redis
+        run: docker compose -f compose.dev.yml up -d --wait mysql redis
+      - name: Verify ordinary and dev migrations, actual logins and restart
+        run: |
+          set -euo pipefail
+          export CREDENTIAL_KEK="$(openssl rand -base64 32)"
+          echo "::add-mask::$CREDENTIAL_KEK"
+          JAR=backend/peachagent-bootstrap/target/peachagent-bootstrap-1.0.0-SNAPSHOT.jar
+          API_PID=
+          stop_api() {
+            if [[ -n "$API_PID" ]]; then
+              kill "$API_PID" 2>/dev/null || true
+              wait "$API_PID" 2>/dev/null || true
+              API_PID=
+            fi
+          }
+          trap 'stop_api; for log in seed-normal.log seed-initial.log seed-restart.log seed-rejected.log; do if [[ -f "$log" ]]; then tail -n 100 "$log"; fi; done' EXIT
+          start_api() {
+            local profiles="$1" log="$2"
+            java -jar "$JAR" --spring.profiles.active="$profiles" > "$log" 2>&1 &
+            API_PID=$!
+            for i in $(seq 1 90); do
+              kill -0 "$API_PID"
+              if curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"' && grep -q 'Database contract verified' "$log"; then
+                return
+              fi
+              sleep 1
+            done
+            echo "API readiness failed"
+            return 1
+          }
+          sql() {
+            docker compose -f compose.dev.yml exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql --batch --skip-column-names -u "$MYSQL_USER" "$MYSQL_DATABASE" -e "$1"' sh "$1"
+          }
+          start_api api seed-normal.log
+          test "$(sql 'SELECT COUNT(*) FROM IAM_USER')" = 0
+          python3 backend/qa/dev-seed-smoke.py normal
+          stop_api
+          start_api api,dev seed-initial.log
+          test "$(sql 'SELECT COUNT(*) FROM IAM_USER')" = 2
+          test "$(sql 'SELECT COUNT(*) FROM IAM_TENANT')" = 2
+          test "$(sql 'SELECT COUNT(*) FROM IAM_WORKSPACE')" = 2
+          test "$(sql 'SELECT COUNT(*) FROM IAM_PROJECT')" = 2
+          test "$(sql 'SELECT COUNT(*) FROM BUDGET_POLICY')" = 6
+          test "$(sql "SELECT COUNT(*) FROM FLYWAY_SCHEMA_HISTORY WHERE VERSION='4' AND SUCCESS=1")" = 1
+          python3 backend/qa/dev-seed-smoke.py initial
+          stop_api
+          start_api api,dev seed-restart.log
+          python3 backend/qa/dev-seed-smoke.py restart
+          test "$(sql 'SELECT COUNT(*) FROM IAM_USER')" = 2
+          test "$(sql 'SELECT COUNT(*) FROM BUDGET_POLICY')" = 6
+          test "$(sql "SELECT COUNT(*) FROM FLYWAY_SCHEMA_HISTORY WHERE VERSION='4' AND SUCCESS=1")" = 1
+          stop_api
+          # Removing dev must not make a database with known demo credentials production-ready.
+          set +e
+          timeout 90s java -jar "$JAR" --spring.profiles.active=api > seed-rejected.log 2>&1
+          RESULT=$?
+          set -e
+          test "$RESULT" -ne 0
+          test "$RESULT" -ne 124
+          grep -Ei 'FlywayValidateException|Validate failed|Detected applied migration not resolved locally' seed-rejected.log
+          echo "PASS: normal API rejects database with dev migration history"
+      - name: Cleanup
+        if: always()
+        run: docker compose -f compose.dev.yml down -v

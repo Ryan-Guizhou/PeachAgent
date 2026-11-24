@@ -65,6 +65,8 @@ public class FoundationConfiguration {
                 } else {
                     throw new IllegalStateException("MySQL 5.7 or 8.x is required");
                 }
+                // 不忽略已应用的未来迁移，防止关闭 dev 后接受含已知账号的数据库。
+                configuration.ignoreMigrationPatterns(new String[0]);
                 if (development) {
                     configuration.locations(schemaLocation, "classpath:db/common", "classpath:db/dev");
                 } else {
