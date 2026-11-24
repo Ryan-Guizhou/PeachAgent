@@ -1,0 +1,84 @@
+name: P1 dependency security
+on:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'frontend/package.json'
+      - 'frontend/package-lock.json'
+      - '.github/workflows/p1-security.yml'
+      - '.gitleaks.toml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  lock:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify committed npm resolution
+        working-directory: frontend
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          git diff --exit-code -- package-lock.json
+          sha256sum package-lock.json
+          npm audit --audit-level=high
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p1-npm-lock
+          path: frontend/package-lock.json
+          if-no-files-found: error
+          retention-days: 2
+  sbom:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: backend/**/pom.xml
+      - name: Resolve all Maven modules and generate CycloneDX SBOM
+        run: mvn -B -f backend/pom.xml -DskipTests install org.cyclonedx:cyclonedx-maven-plugin:2.9.1:makeAggregateBom -Dcyclonedx.outputFormat=json -Dcyclonedx.skipAttach=true
+      - name: Verify aggregate SBOM
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          bom=json.loads(Path("backend/target/bom.json").read_text())
+          packages=[c for c in bom["components"] if c.get("purl","").startswith("pkg:maven/")]
+          assert len(packages)>20, "Incomplete Maven dependency SBOM"
+          print("Maven components:",len(packages))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: p1-java-sbom
+          path: backend/target/bom.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Scan resolved Maven SBOM for vulnerabilities
+        run: |
+          scanner="$RUNNER_TEMP/osv-scanner"
+          curl --fail --silent --show-error --location --retry 2 https://github.com/google/osv-scanner/releases/download/v2.7.1/osv-scanner_linux_amd64 -o "$scanner"
+          echo "fb7dab19a8bd9bbe5c3189f09d4b7ee1820c9553a23bac202648a56efd2f6ee8  $scanner" | sha256sum --check
+          chmod +x "$scanner"
+          "$scanner" scan source --lockfile=backend/target/bom.json
+  secrets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Scan tracked source for secrets (redacted)
+        run: |
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          git archive HEAD | tar -x -C "$tmp"
+          docker run --rm -v "$tmp:/repo:ro" zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f dir /repo --redact=100 --no-banner --verbose
