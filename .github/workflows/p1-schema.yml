@@ -1,0 +1,18 @@
+name: P1 database verification
+on:
+  pull_request:
+    paths:
+      - 'database/**'
+      - 'backend/**/db/migration/**'
+      - '.github/workflows/p1-schema.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  schema:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: MySQL 8.4 migration and schema verification
+        run: bash database/verify-schema.sh

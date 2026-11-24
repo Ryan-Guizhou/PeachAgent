@@ -9,7 +9,7 @@ PeachAgent is the platform name; OTRYX Studio is the current console prototype n
 
 PeachAgent connects Agent and workflow design, controlled execution, knowledge retrieval, evaluation, reusable resources, and application publishing for individual developers. Each user has an independent tenant with multiple workspaces and projects, and configures their own model and tool credentials.
 
-**OTRYX Studio is currently available as an interactive browser prototype.** The production backend, live model/tool integrations, and deployable Compose package have not been delivered. All seven production development cycles await their own technical review. Prototype demonstrations and product acceptance are tracked separately.
+**OTRYX Studio is currently available as an interactive browser prototype.** The approved [P1 technical design](technical/P1-TECHNICAL-DESIGN.md) and [review issue #18](https://github.com/Ryan-Guizhou/PeachAgent/issues/18) track the current development scope. The production backend, live model/tool integrations, and deployable Compose package have not been delivered. P1 has been approved and is in development, not yet accepted; P2–P7 await their own technical reviews. Prototype demonstrations and product acceptance are tracked separately.
 
 - Background, complete requirements, and schedule: [Product requirements](requirements/PRD-PeachAgent.md).
 - Try the existing interactions: [Prototype guide](prototype/README.md).
