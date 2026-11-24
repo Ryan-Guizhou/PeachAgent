@@ -298,7 +298,19 @@ def read_benchmark(scope):
             "runP95Ms": p95(runs), "callP95Ms": p95(calls)}
 
 
+def assert_processes_alive():
+    for role in ("API","WORKER"):
+        pid=int(os.environ["PEACHAGENT_PERF_"+role+"_PID"])
+        try:
+            os.kill(pid,0)
+            # A zombie PID is not a running service.
+            assert Path("/proc/"+str(pid)+"/stat").read_text().split(") ",1)[1][0]!="Z"
+        except (OSError,AssertionError):
+            raise AssertionError(role+" process exited during benchmark") from None
+
+
 def submit(scope, client):
+    assert_processes_alive()
     marker = "perf-live-" + scope["label"] + "-" + uuid.uuid4().hex
     payload = {"input": {"text": marker}, "audioBase64": None, "maxOutputTokens": 32}
     path = scope["path"] + "/models/" + scope["model"] + "/debug"
@@ -399,6 +411,7 @@ FROM BUDGET_BUCKET;
 def main():
     assert os.environ.get("GITHUB_ACTIONS") == "true" and os.environ.get("PEACHAGENT_ISOLATED_PERF") == "1", \
         "Benchmark requires isolated GitHub Actions database"
+    assert_processes_alive()
     assert mysql("SELECT COUNT(*) FROM IAM_USER;") == "0", "Refuse to seed a nonempty database"
     report = {"seedRowsPerTable": SEED_COUNT, "cpuCount": os.cpu_count(),
               "memoryKiB": int(re.search(r"MemTotal:\s+(\d+)", Path("/proc/meminfo").read_text()).group(1)),

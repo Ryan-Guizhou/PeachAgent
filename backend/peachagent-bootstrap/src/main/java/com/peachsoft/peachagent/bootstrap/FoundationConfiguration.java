@@ -3,6 +3,8 @@ package com.peachsoft.peachagent.bootstrap;
 import com.peachsoft.peachagent.common.IdGenerator;
 import com.peachsoft.peachagent.common.UuidV7Generator;
 import java.time.Clock;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -11,6 +13,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 /** 启动时核对数据库初始化契约，拒绝在错误的数据库环境运行。 */
 @Configuration
 public class FoundationConfiguration {
+    private static final Logger log = LoggerFactory.getLogger(FoundationConfiguration.class);
     @Bean
     Clock clock() { return Clock.systemUTC(); }
 
@@ -31,6 +34,7 @@ public class FoundationConfiguration {
             if (!Integer.valueOf(1).equals(count)) {
                 throw new IllegalStateException("Database migration not ready");
             }
+            log.info("Database contract verified");
         };
     }
 }

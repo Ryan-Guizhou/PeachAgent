@@ -43,16 +43,25 @@ jobs:
           JAR=backend/peachagent-bootstrap/target/peachagent-bootstrap-1.0.0-SNAPSHOT.jar
           java -jar "$JAR" --spring.profiles.active=api > perf-api.log 2>&1 &
           API=$!
-          java -jar "$JAR" --spring.profiles.active=worker > perf-worker.log 2>&1 &
-          WORKER=$!
-          trap 'kill "$API" "$WORKER" 2>/dev/null || true; grep -E "Run (claim|execution|settlement|recovery)|Transient run settlement|Deadlock|WARN|ERROR" perf-worker.log | tail -n 60 || true' EXIT
+          trap 'kill "$API" ${WORKER:-} 2>/dev/null || true; test ! -f perf-worker.log || grep -E "Run (claim|execution|settlement|recovery)|Transient run settlement|Deadlock|WARN|ERROR" perf-worker.log | tail -n 60 || true' EXIT
+          # Only the API role migrates the database. The worker must start after its contract check.
           for i in $(seq 1 90); do
-            if curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"' && grep -q 'Started PeachAgentApplication' perf-worker.log; then break; fi
-            kill -0 "$API" "$WORKER"; sleep 2
+            if curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"' && grep -q 'Database contract verified' perf-api.log; then break; fi
+            kill -0 "$API"; sleep 2
           done
           curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'
-          grep -q 'Started PeachAgentApplication' perf-worker.log
+          grep -q 'Database contract verified' perf-api.log
+          kill -0 "$API"
+          java -jar "$JAR" --spring.profiles.active=worker > perf-worker.log 2>&1 &
+          WORKER=$!
+          for i in $(seq 1 60); do
+            if grep -q 'Database contract verified' perf-worker.log; then break; fi
+            kill -0 "$WORKER"; sleep 1
+          done
+          grep -q 'Database contract verified' perf-worker.log
           kill -0 "$API" "$WORKER"
+          export PEACHAGENT_PERF_WORKER_PID="$WORKER"
+          export PEACHAGENT_PERF_API_PID="$API"
           python3 backend/qa/performance-smoke.py
       - name: Upload benchmark evidence
         if: always()
