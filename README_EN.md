@@ -9,13 +9,20 @@ PeachAgent is the platform name; OTRYX Studio is the current console prototype n
 
 PeachAgent connects Agent and workflow design, controlled execution, knowledge retrieval, evaluation, reusable resources, and application publishing for individual developers. Each user has an independent tenant with multiple workspaces and projects, and configures their own model and tool credentials.
 
-**OTRYX Studio is currently available as an interactive browser prototype.** The approved [P1 technical design](technical/P1-TECHNICAL-DESIGN.md) and [review issue #18](https://github.com/Ryan-Guizhou/PeachAgent/issues/18) track the current development scope. The production backend, live model/tool integrations, and deployable Compose package have not been delivered. P1 has been approved and is in development, not yet accepted; P2–P7 await their own technical reviews. Prototype demonstrations and product acceptance are tracked separately.
+**The main P1 foundation implementation has been merged into main; phase acceptance remains open.** The Java API/Worker, MySQL, Redis and Vue console have passed build and local protocol-fixture integration checks. Live provider calls, failure/concurrency/performance checks and complete UI acceptance are tracked in [P1 acceptance issue #18](https://github.com/Ryan-Guizhou/PeachAgent/issues/18). P2–P7 have not been authorized to start. The browser prototype remains a reference for later phases.
 
 - Background, complete requirements, and schedule: [Product requirements](requirements/PRD-PeachAgent.md).
 - Try the existing interactions: [Prototype guide](prototype/README.md).
 - Development boundaries: [Technical baseline](technical/README.md) and [review and delivery process](ci/README.md).
 
 <!-- doc-section:quick-start -->
+## Start the P1 development environment
+
+- [Backend setup](backend/README_EN.md): complete configuration, PowerShell/Bash/IDE, API/Worker, middleware, first account/model and troubleshooting.
+- [Environment template](.env.example): copy to .env and fill your own random passwords and KEK; never commit secrets.
+- [Vue console setup](frontend/README_EN.md): Node.js, dependency installation and proxy settings.
+- [Approved P1 technical design](technical/P1-TECHNICAL-DESIGN.md) · [Initial MySQL migration](backend/peachagent-bootstrap/src/main/resources/db/migration/V1__INITIAL_SCHEMA.sql).
+
 ## Try the prototype
 
 After obtaining the repository, run the following from its root. Python 3 and a modern browser are required:
@@ -83,6 +90,8 @@ Keep the review and approval record in one cycle Issue, and track each developme
 | [requirements/PRD-PeachAgent.md](requirements/PRD-PeachAgent.md) | The single requirements document: background, objectives, users, complete scope, seven-cycle schedule, and acceptance |
 | [technical/README.md](technical/README.md) | Established architecture constraints, technology direction, and decisions for each cycle's review |
 | [ci/README.md](ci/README.md) | Pre-development technical review, user approval, Issues/PRs, cycle acceptance, and change rules |
+| [backend/](backend/README_EN.md) | P1 backend, seven modules, startup and configuration |
+| [frontend/](frontend/README_EN.md) | P1 console, build and browser testing |
 | [prototype/](prototype/README.md) | The runnable local prototype, HTML/CSS/JS source, implementation contracts, and verification records |
 
 Duplicate overviews, phase specifications, and topic documents have been consolidated. The PRD preserves coverage of previous requirement identifiers; historical text remains available in Git history. Future cycles do not need separate sets of planning and design files in advance: their review Issue holds that record.

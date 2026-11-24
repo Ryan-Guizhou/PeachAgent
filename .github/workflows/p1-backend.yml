@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'backend/**'
+      - 'frontend/**'
       - 'compose.dev.yml'
       - '.github/workflows/p1-backend.yml'
   workflow_dispatch:
@@ -10,8 +11,8 @@ permissions:
   contents: read
 jobs:
   backend:
-    runs-on: ubuntu-latest
-    timeout-minutes: 12
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -20,6 +21,15 @@ jobs:
           java-version: '21'
           cache: maven
           cache-dependency-path: backend/**/pom.xml
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build Vue and install Chromium QA
+        working-directory: frontend
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+          npx playwright install --with-deps chromium
       - name: Compile and unit tests
         run: mvn -B -f backend/pom.xml verify
       - name: Start real database, Redis and SMTP
@@ -41,7 +51,7 @@ jobs:
         run: |
           set -euo pipefail
           JAR=backend/peachagent-bootstrap/target/peachagent-bootstrap-1.0.0-SNAPSHOT.jar
-          java -jar "$JAR" --spring.profiles.active=api > api.log 2>&1 &
+          java -jar "$JAR" --spring.profiles.active=api --spring.web.resources.static-locations="file:$(pwd)/frontend/dist/" > api.log 2>&1 &
           API=$!
           trap 'kill "$API" ${WORKER:-} 2>/dev/null || true; cat api.log; test ! -f worker.log || cat worker.log' EXIT
           for i in $(seq 1 60); do
@@ -59,6 +69,18 @@ jobs:
           grep -q 'Started PeachAgentApplication' worker.log
           kill -0 "$WORKER"
           python3 backend/qa/runtime-smoke.py
+          node frontend/qa/p1-browser-smoke.mjs
+      - name: Audit frontend dependencies
+        if: always()
+        working-directory: frontend
+        run: npm audit --audit-level=high
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p1-browser-evidence
+          path: frontend/qa/evidence/
+          if-no-files-found: ignore
       - name: Cleanup
         if: always()
         env:
