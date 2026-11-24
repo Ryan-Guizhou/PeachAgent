@@ -84,18 +84,13 @@ jobs:
           path: backend/target/bom.json
           if-no-files-found: error
           retention-days: 7
-  vulnerability:
-    needs: sbom
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.7.1
-    with:
-      download-artifact: p1-java-sbom
-      scan-args: |
-        --lockfile=bom.json
-      upload-sarif: false
-      fail-on-vuln: true
-    permissions:
-      contents: read
-      actions: read
+      - name: Scan resolved Maven SBOM for vulnerabilities
+        run: |
+          scanner="$RUNNER_TEMP/osv-scanner"
+          curl --fail --silent --show-error --location --retry 2 https://github.com/google/osv-scanner/releases/download/v2.7.1/osv-scanner_linux_amd64 -o "$scanner"
+          echo "fb7dab19a8bd9bbe5c3189f09d4b7ee1820c9553a23bac202648a56efd2f6ee8  $scanner" | sha256sum --check
+          chmod +x "$scanner"
+          "$scanner" scan source --lockfile=backend/target/bom.json
   secrets:
     runs-on: ubuntu-24.04
     timeout-minutes: 6
