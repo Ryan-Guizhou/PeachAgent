@@ -55,7 +55,7 @@ jobs:
           JAR=backend/peachagent-bootstrap/target/peachagent-bootstrap-1.0.0-SNAPSHOT.jar
           java -jar "$JAR" --spring.profiles.active=api --spring.web.resources.static-locations="file:$(pwd)/frontend/dist/" > api.log 2>&1 &
           API=$!
-          trap 'kill "$API" ${WORKER:-} 2>/dev/null || true; cat api.log; test ! -f worker.log || cat worker.log' EXIT
+          trap 'kill "$API" ${WORKER:-} 2>/dev/null || true; cat api.log; test ! -f worker.log || cat worker.log; test ! -f worker-recovery.log || cat worker-recovery.log' EXIT
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'; then break; fi
             kill -0 "$API"; sleep 2
@@ -70,7 +70,12 @@ jobs:
           done
           grep -q 'Started PeachAgentApplication' worker.log
           kill -0 "$WORKER"
-          python3 backend/qa/runtime-smoke.py
+          PEACHAGENT_TEST_WORKER_PID="$WORKER" PEACHAGENT_TEST_WORKER_JAR="$JAR" python3 backend/qa/runtime-smoke.py
+          # The fault test terminates its recovery worker; restore the ordinary worker for browser QA.
+          wait "$WORKER" || true
+          java -jar "$JAR" --spring.profiles.active=worker >> worker.log 2>&1 &
+          WORKER=$!
+          kill -0 "$WORKER"
           node frontend/qa/p1-browser-smoke.mjs
       - name: Audit frontend dependencies
         if: always()
