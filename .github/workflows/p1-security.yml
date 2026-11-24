@@ -20,35 +20,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Verify or generate npm resolution
+      - name: Verify committed npm resolution
         working-directory: frontend
         run: |
-          if [ -f package-lock.json ]; then
-            npm ci --ignore-scripts --no-audit --no-fund
-            git diff --exit-code -- package-lock.json
-          else
-            npm install --package-lock-only --ignore-scripts --no-audit --no-fund --registry=https://registry.npmjs.org/
-          fi
-      - name: Export public lock metadata for review
-        working-directory: frontend
-        run: |
-          python3 - <<'PY'
-          import base64, hashlib, json
-          from pathlib import Path
-          from urllib.parse import urlsplit
-          data=Path("package-lock.json").read_bytes()
-          lock=json.loads(data)
-          assert lock["lockfileVersion"] == 3
-          for package in lock["packages"].values():
-              resolved=package.get("resolved")
-              if resolved:
-                  url=urlsplit(resolved)
-                  assert url.scheme=="https" and url.netloc=="registry.npmjs.org" and not url.query and not url.fragment
-          print("LOCK_SHA256="+hashlib.sha256(data).hexdigest())
-          encoded=base64.b64encode(data).decode("ascii")
-          for index in range(0,len(encoded),1500):
-              print("LOCK_CHUNK="+encoded[index:index+1500])
-          PY
+          npm ci --ignore-scripts --no-audit --no-fund
+          git diff --exit-code -- package-lock.json
+          sha256sum package-lock.json
+          npm audit --audit-level=high
       - uses: actions/upload-artifact@v4
         with:
           name: p1-npm-lock
@@ -103,4 +81,4 @@ jobs:
           tmp="$(mktemp -d)"
           trap 'rm -rf "$tmp"' EXIT
           git archive HEAD | tar -x -C "$tmp"
-          docker run --rm -v "$tmp:/repo:ro" zricethezav/gitleaks:v8.30.1 dir /repo --redact=100 --no-banner
+          docker run --rm -v "$tmp:/repo:ro" zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f dir /repo --redact=100 --no-banner --verbose
