@@ -44,7 +44,15 @@ function closeMobile(){if(mobile.value){mobile.value=false;void nextTick(()=>mob
 async function action(fn:()=>Promise<unknown>){busy.value=true;error.value='';notice.value='';try{await fn();notice.value=tr('操作成功','Saved')}catch(e){fail(e)}finally{busy.value=false}}
 function clearEdit(){edit.value='';form.value={};dirty.value=false;previewText.value=null;manifestValid.value=false}
 function clearMedia(){if(mediaUrl.value)URL.revokeObjectURL(mediaUrl.value);mediaUrl.value='';mediaType.value=''}
-function canLeave(){return !dirty.value||window.confirm(tr('放弃未保存的内容？','Discard unsaved changes?'))}
+/** 只有当前活动编辑才有脏状态。关闭对话框后迟到的 blur/change 不得阻塞导航。 */
+function hasUnsavedChanges(){return !!edit.value&&dirty.value}
+function markEditDirty(){
+ if(!edit.value)return
+ dirty.value=edit.value!=='preview'
+ manifestValid.value=false
+ previewText.value=null
+}
+function canLeave(){return !hasUnsavedChanges()||window.confirm(tr('放弃未保存的内容？','Discard unsaved changes?'))}
 function closeEdit(){if(canLeave())clearEdit()}
 function stopStream(){stream.value?.close();stream.value=null;streamState.value='idle'}
 function clearPage(){generation++;runSelection++;conversationSelection++;pageLoading.value=true;historyLoading.value=false;olderLoading.value=false;hasOlder.value=false;stopStream();clearMedia();conversations.value=[];modelId.value='';promptVersionId.value='';chatText.value='';variables.value='{}';conversation.value='';activeRun.value='';streamText.value='';messages.value=[];runDetail.value=null;events.value=[];selectedPrompt.value=null;versions.value=[];rows.value=[];providers.value=[];credentials.value=[];bindings.value=[];defaults.value=[];references.value=[];calls.value=[];budgets.value=[];query.value='';clearEdit()}
@@ -93,7 +101,7 @@ function startEdit(kind:string,x?:Row){
  else if(kind==='debug')form.value={id:x?.id,modelType:x?.modelType,text:'',query:'',documents:'[]',audioBase64:''}
  dirty.value=false
 }
-function pickProtocol(event:Event){const d=protocols.value[Number((event.target as HTMLSelectElement).value)];if(!d)return;form.value.protocolKey=d.protocol.key;form.value.protocolVersion=d.protocol.version;form.value.modelType=Object.keys(d.operations)[0];form.value.modelOptions={};form.value.protocolOptions='{}';dirty.value=true}
+function pickProtocol(event:Event){if(edit.value!=='model')return;const d=protocols.value[Number((event.target as HTMLSelectElement).value)];if(!d)return;form.value.protocolKey=d.protocol.key;form.value.protocolVersion=d.protocol.version;form.value.modelType=Object.keys(d.operations)[0];form.value.modelOptions={};form.value.protocolOptions='{}';dirty.value=true}
 async function fileAudio(event:Event){const file=(event.target as HTMLInputElement).files?.[0];if(!file)return;if(file.size>10*1024*1024){error.value=tr('音频最大 10 MiB','Maximum audio size is 10 MiB');return}form.value.audioBase64=await new Promise<string>((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result).split(',')[1]||'');r.onerror=reject;r.readAsDataURL(file)});dirty.value=true}
 function manifestPayload(f:Row){return {...f,configSchema:JSON.parse(f.configSchema),permissions:JSON.parse(f.permissions),extensionPoints:JSON.parse(f.extensionPoints)}}
 async function validateManifest(){
@@ -307,10 +315,10 @@ async function retry(id:string){
    else await showRun(r)
  })
 }
-function onUnload(event:BeforeUnloadEvent){if(dirty.value){event.preventDefault();event.returnValue=''}}
+function onUnload(event:BeforeUnloadEvent){if(hasUnsavedChanges()){event.preventDefault();event.returnValue=''}}
 onMounted(async()=>{
  const removeGuard=router.beforeEach((to,from)=>{
-   if(to.fullPath===from.fullPath||!dirty.value)return true
+   if(to.fullPath===from.fullPath||!hasUnsavedChanges())return true
    if(!canLeave())return false
    // 已确认丢弃时立即清除脏标记，避免浏览器 history/hash 后续事件再次阻止已批准的导航。
    clearEdit()
@@ -363,7 +371,7 @@ onBeforeUnmount(()=>{stopWatch();stopStream();clearMedia();window.removeEventLis
  <template v-else-if="page==='plugins'"><div class="panel"><div class="panel-head"><h2>{{tr('私有插件声明','Private plugin manifests')}}</h2><button class="primary" @click="startEdit('plugin')">{{tr('新增声明','New manifest')}}</button></div><p class="muted">{{tr('P1 只支持声明、Schema 校验与版本登记，不安装或运行插件。','P1 validates and registers manifests only; no plugin installation or execution.')}}</p><p v-if="!pageLoading&&!rows.length" class="empty">{{tr('暂无插件声明','No plugin manifests')}}</p><div v-for="x in rows" :key="x.id" class="list-row"><div><b>{{x.name}}</b><small>{{x.pluginKey}} · {{x.pluginVersion}}</small></div><span class="status" :data-state="x.status">{{label(x.status)}}</span><button v-if="x.status==='DRAFT'" @click="mutate(s.w+'/plugin-manifests/'+x.id+'/declare',{rowVersion:x.rowVersion})">{{tr('声明','Declare')}}</button><button @click="mutate(s.w+'/plugin-manifests/'+x.id+'/archive',{rowVersion:x.rowVersion},'POST',true)">{{tr('归档','Archive')}}</button></div></div></template>
  <template v-else-if="page==='settings'"><div class="panel"><h2>{{tr('个人偏好','Preferences')}}</h2><label>{{tr('主题','Theme')}}<select :aria-label="tr('主题','Theme')" :value="s.theme" :disabled="busy" @change="preference($event,'theme')"><option value="editorial-light">{{tr('纸面浅色','Editorial light')}}</option><option value="obsidian-dark">{{tr('曜石深色','Obsidian dark')}}</option><option value="nordic-slate">{{tr('北欧灰蓝','Nordic slate')}}</option></select></label><label>{{tr('语言','Language')}}<select :aria-label="tr('语言','Language')" :value="s.locale" :disabled="busy" @change="preference($event,'locale')"><option value="zh-CN">简体中文</option><option value="en-US">English</option></select></label><p>{{localeName}} · {{s.user.currency}}</p></div></template>
  </main></div>
- <div v-if="edit" class="overlay" @click.self="closeEdit"><form ref="dialogRef" class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title" tabindex="-1" @submit.prevent="save" @input="dirty=edit!=='preview';manifestValid=false;previewText=null" @change="dirty=edit!=='preview';manifestValid=false;previewText=null"><div class="panel-head"><h2 id="dialog-title">{{tr('配置','Configure')}} · {{label(edit)}}</h2><button type="button" @click="closeEdit" :aria-label="tr('关闭','Close')">×</button></div>
+ <div v-if="edit" class="overlay" @click.self="closeEdit"><form ref="dialogRef" class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title" tabindex="-1" @submit.prevent="save" @input="markEditDirty" @change="markEditDirty"><div class="panel-head"><h2 id="dialog-title">{{tr('配置','Configure')}} · {{label(edit)}}</h2><button type="button" @click="closeEdit" :aria-label="tr('关闭','Close')">×</button></div>
  <template v-if="['workspace','project','provider','model','prompt','plugin','credential'].includes(edit)"><label>{{tr('名称','Name')}}<input v-model="form.name" required></label></template>
  <label v-if="['workspace','project','prompt','plugin'].includes(edit)">{{tr('描述','Description')}}<textarea v-model="form.description" rows="2"></textarea></label>
  <template v-if="edit==='credential'"><label>{{tr('认证类型','Auth type')}}<select v-model="form.secretType"><option value="BEARER">{{label('BEARER')}}</option><option value="API_KEY">{{label('API_KEY')}}</option></select></label><label>{{tr('允许的来源','Allowed origin')}}<input v-model="form.allowedOrigin" required></label></template>

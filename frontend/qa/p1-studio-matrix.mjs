@@ -16,7 +16,15 @@ await mkdir(evidence,{recursive:true})
 const browser=await chromium.launch({headless:true})
 const page=await browser.newPage({viewport:{width:1440,height:900}})
 const errors=[]
+let expectingDialog=false
 page.on('pageerror',error=>errors.push(error.message))
+// Playwright otherwise auto-dismisses unexpected native confirms, disguising a dirty-state bug as a route timeout.
+page.on('dialog',async dialog=>{
+  if(!expectingDialog){
+    errors.push('Unexpected '+dialog.type()+' during clean navigation')
+    await dialog.dismiss()
+  }
+})
 const navigationOnly=process.argv.includes('--navigation-only')
 
 async function ready(route,locale){
@@ -32,6 +40,7 @@ async function ready(route,locale){
 async function documentVisit(route,tag,locale){
   // Unique query selects a new real document, avoiding previous canceled hash-history state.
   await page.goto(base+'/?qa-view='+encodeURIComponent(tag)+'#/'+route,{waitUntil:'domcontentloaded'})
+  assert.deepEqual(errors,[])
   await ready(route,locale)
 }
 
@@ -41,16 +50,23 @@ async function linkVisit(route){
   }
   const link=page.locator('#studio-navigation nav a[href="#/'+route+'"]')
   await link.click()
+  assert.deepEqual(errors,[])
   await ready(route)
 }
 
 async function confirmAction(action,accept){
-  const handled=page.waitForEvent('dialog',{timeout:10000}).then(async dialog=>{
-    assert.equal(dialog.type(),'confirm')
-    if(accept)await dialog.accept()
-    else await dialog.dismiss()
-  })
-  await Promise.all([handled,action()])
+  assert.equal(expectingDialog,false)
+  expectingDialog=true
+  try{
+    const handled=page.waitForEvent('dialog',{timeout:10000}).then(async dialog=>{
+      assert.equal(dialog.type(),'confirm')
+      if(accept)await dialog.accept()
+      else await dialog.dismiss()
+    })
+    await Promise.all([handled,action()])
+  }finally{
+    expectingDialog=false
+  }
 }
 
 async function settle(){
@@ -102,6 +118,8 @@ async function navigationPreflight(){
   await confirmAction(()=>page.keyboard.press('Escape'),true)
   await modal.waitFor({state:'hidden'})
   await page.waitForFunction(()=>document.querySelector('main .panel-head button.primary')===document.activeElement)
+  // A closed dirty form may emit change while its focused input is removed. No confirm is permitted now.
+  await settle()
   await linkVisit('settings')
   await mobileNavigation()
   console.log('PASS: real route navigation, canceled history restoration, accepted dirty navigation, duplicate navigation, modal and mobile focus')
