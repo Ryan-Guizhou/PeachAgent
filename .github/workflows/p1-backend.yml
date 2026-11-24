@@ -24,6 +24,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Validate real vendor smoke plan offline
+        run: python3 backend/qa/vendor-smoke.py --config backend/qa/vendor-smoke.example.json
       - name: Build Vue and install Chromium QA
         working-directory: frontend
         run: |
