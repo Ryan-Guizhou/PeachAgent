@@ -27,6 +27,7 @@ FIXTURE_AUTH = []
 FIXTURE_MESSAGES = []
 EARLY_DELTA_RELEASE = threading.Event()
 EARLY_DELTA_TIMEOUT = threading.Event()
+EARLY_UPSTREAM_SENT = threading.Event()
 audio = io.BytesIO()
 with wave.open(audio, "wb") as w:
     w.setnchannels(1)
@@ -73,6 +74,7 @@ class Provider(BaseHTTPRequestHandler):
                 self.send_header("Content-Length",str(len(first)+len(tail)))
                 self.end_headers()
                 self.wfile.write(first);self.wfile.flush()
+                EARLY_UPSTREAM_SENT.set()
                 if not EARLY_DELTA_RELEASE.wait(8):
                     EARLY_DELTA_TIMEOUT.set()
                 self.wfile.write(tail);self.wfile.flush()
@@ -199,6 +201,21 @@ try:
     early_request=urllib.request.Request(BASE+"/api/v1"+p+"/runs/"+early["id"]+"/events",
                      headers={"Origin":ORIGIN,"Accept":"text/event-stream"})
     seen=False
+    durable=threading.Event()
+    def observe_durable_delta():
+        if not EARLY_UPSTREAM_SENT.wait(5):
+            return
+        query="SELECT COUNT(*) FROM RT_RUN_EVENT WHERE RUN_ID='"+str(uuid.UUID(early["id"]))+"' AND EVENT_TYPE='delta';"
+        while not EARLY_DELTA_RELEASE.is_set() and not EARLY_DELTA_TIMEOUT.is_set():
+            result=subprocess.run(["docker","compose","-f","compose.dev.yml","exec","-T","mysql","sh","-c",
+                'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql --batch --skip-column-names -u "$MYSQL_USER" "$MYSQL_DATABASE"'],
+                input=query,text=True,capture_output=True,timeout=5)
+            if result.returncode==0 and result.stdout.strip()=="1":
+                durable.set()
+                return
+            time.sleep(.05)
+    observer=threading.Thread(target=observe_durable_delta,daemon=True)
+    observer.start()
     try:
         with c.opener.open(early_request,timeout=15) as response:
             pending=b""
@@ -209,11 +226,12 @@ try:
                     if line.startswith(b"data: "):
                         event=json.loads(line[6:])
                         if event["eventType"]=="delta":
-                            assert not EARLY_DELTA_TIMEOUT.is_set(),"First delta buffered until upstream terminal"
+                            assert not EARLY_DELTA_TIMEOUT.is_set(),("First delta buffered until upstream terminal","durableBeforeTail",durable.is_set(),"headers",dict(response.headers))
                             assert event["payload"]["text"]=="Early visible fragment"
                             seen=True;EARLY_DELTA_RELEASE.set()
     finally:
         EARLY_DELTA_RELEASE.set()
+        observer.join(timeout=6)
     assert seen
     wait(c,p,early)
     print("PASS: downstream first delta received before upstream final bytes are released")

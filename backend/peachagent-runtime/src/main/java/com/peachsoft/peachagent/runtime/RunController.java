@@ -3,19 +3,23 @@ package com.peachsoft.peachagent.runtime;
 import cn.dev33.satoken.stp.StpUtil;
 import com.peachsoft.peachagent.common.DomainException;
 import com.peachsoft.peachagent.iam.IdentityService;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.*;
 import java.util.concurrent.Semaphore;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 import tools.jackson.databind.json.JsonMapper;
 
 @RestController
 @Profile("api")
 @RequestMapping("/api/v1/workspaces/{w}/projects/{p}")
 public class RunController {
+    private static final Logger log=LoggerFactory.getLogger(RunController.class);
     private final IdentityService identity;private final RunService runs;private final ArtifactStore artifacts;private final JsonMapper mapper;
     private final Semaphore streams=new Semaphore(64);
     public RunController(IdentityService identity,RunService runs,ArtifactStore artifacts,JsonMapper mapper){this.identity=identity;this.runs=runs;this.artifacts=artifacts;this.mapper=mapper;}
@@ -37,37 +41,56 @@ public class RunController {
     public Map<String,Object> cancel(@PathVariable String w,@PathVariable String p,@PathVariable String id){return runs.cancel(identity.project(w,p),id);}
     @PostMapping("/runs/{id}/retry")
     public Map<String,Object> retry(@PathVariable String w,@PathVariable String p,@PathVariable String id,@RequestHeader("Idempotency-Key") String key,@RequestBody Retry input){return runs.retry(identity.project(w,p),id,key,input.acknowledgeUnknown());}
+    /** 直接在 Servlet 虚拟线程交付事件，显式刷新响应缓冲区；连接、鉴权和游标仍有界。 */
     @GetMapping(value="/runs/{id}/events",produces=MediaType.TEXT_EVENT_STREAM_VALUE)
-    public ResponseEntity<StreamingResponseBody> events(@PathVariable String w,@PathVariable String p,@PathVariable String id,
-            @RequestHeader(value="Last-Event-ID",required=false) Long last,@RequestParam(defaultValue="0") long after){
-        var principal=identity.current();var scope=identity.project(principal,w,p,false);runs.get(scope,id);String token=StpUtil.getTokenValue();
-        long cursor=Math.max(after,last==null?0:last);
-        StreamingResponseBody body=out->{
-            if(!streams.tryAcquire())return;
-            try{
-                long seq=cursor,end=System.nanoTime()+25_000_000_000L;
-                long heartbeat=0;boolean firstDelta=false;
-                while(System.nanoTime()<end){
-                    Object logged=StpUtil.getLoginIdByToken(token);
-                    if(logged==null||!scope.userId().equals(logged.toString()))break;
-                    var page=runs.eventPage(scope,id,seq,principal.authEpoch());
-                    for(var event:page.events()){
-                        seq=((Number)event.get("seq")).longValue();
-                        if("delta".equals(event.get("eventType")))firstDelta=true;
-                        String data="id: "+seq+"\nevent: "+event.get("eventType")+"\ndata: "+mapper.writeValueAsString(event)+"\n\n";
-                        out.write(data.getBytes(StandardCharsets.UTF_8));out.flush();
-                    }
-                    if(page.drained(seq))break;
-                    if(page.events().size()==100)continue;
-                    if(page.events().isEmpty()&&System.nanoTime()-heartbeat>=2_000_000_000L){
-                        out.write(": heartbeat\n\n".getBytes(StandardCharsets.UTF_8));out.flush();heartbeat=System.nanoTime();
-                    }
-                    try{Thread.sleep(firstDelta?100:25);}catch(InterruptedException ex){Thread.currentThread().interrupt();break;}
+    public void events(@PathVariable String w,@PathVariable String p,@PathVariable String id,
+            @RequestHeader(value="Last-Event-ID",required=false) Long last,@RequestParam(defaultValue="0") long after,
+            HttpServletResponse response)throws IOException{
+        var principal=identity.current();
+        var scope=identity.project(principal,w,p,false);
+        runs.get(scope,id);
+        String token=StpUtil.getTokenValue();
+        if(!streams.tryAcquire())throw new DomainException("STREAM_LIMIT",429,"Too many event streams");
+        try{
+            response.setStatus(HttpServletResponse.SC_OK);
+            response.setContentType(MediaType.TEXT_EVENT_STREAM_VALUE);
+            response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+            response.setHeader("Cache-Control","no-cache, no-store");
+            response.setHeader("X-Accel-Buffering","no");
+            var out=response.getOutputStream();
+            long seq=Math.max(after,last==null?0:last),end=System.nanoTime()+25_000_000_000L;
+            long heartbeat=0;
+            boolean firstDelta=false;
+            while(System.nanoTime()<end){
+                Object logged=StpUtil.getLoginIdByToken(token);
+                if(logged==null||!scope.userId().equals(logged.toString()))break;
+                var page=runs.eventPage(scope,id,seq,principal.authEpoch());
+                for(var event:page.events()){
+                    seq=((Number)event.get("seq")).longValue();
+                    if("delta".equals(event.get("eventType")))firstDelta=true;
+                    String data="id: "+seq+"\nevent: "+event.get("eventType")+"\ndata: "+mapper.writeValueAsString(event)+"\n\n";
+                    out.write(data.getBytes(StandardCharsets.UTF_8));
+                    response.flushBuffer();
                 }
-            }catch(DomainException ex){/* 权限变更立即关闭流，客户端重新鉴权。 */}
-            finally{streams.release();}
-        };
-        return ResponseEntity.ok().contentType(MediaType.TEXT_EVENT_STREAM).header("Cache-Control","no-cache, no-store").header("X-Accel-Buffering","no").body(body);
+                if(page.drained(seq))break;
+                if(page.events().size()==100)continue;
+                if(page.events().isEmpty()&&System.nanoTime()-heartbeat>=2_000_000_000L){
+                    out.write(": heartbeat\n\n".getBytes(StandardCharsets.UTF_8));
+                    response.flushBuffer();
+                    heartbeat=System.nanoTime();
+                }
+                try{Thread.sleep(firstDelta?100:25);}
+                catch(InterruptedException ex){Thread.currentThread().interrupt();break;}
+            }
+        }catch(DomainException ex){
+            if(!response.isCommitted())throw ex;
+            // 权限变化后停止交付，不再写入已提交的 SSE 响应。
+        }catch(IOException ex){
+            if(!response.isCommitted())throw ex;
+            log.debug("Run event stream disconnected runId={}",id);
+        }finally{
+            streams.release();
+        }
     }
     @GetMapping("/runs/{id}/artifacts/{artifact}")
     public ResponseEntity<byte[]> artifact(@PathVariable String w,@PathVariable String p,@PathVariable String id,@PathVariable String artifact){

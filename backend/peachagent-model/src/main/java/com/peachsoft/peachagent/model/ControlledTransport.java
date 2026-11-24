@@ -122,8 +122,8 @@ public class ControlledTransport {
             return new FilterInputStream(response.getEntity().getContent()){
                 long seen;
                 private void count(int n)throws IOException{if(n>0&&(seen+=n)>limit)throw new IOException("Model response too large");context.checkActive();}
-                @Override public int read()throws IOException{int n=super.read();count(n<0?0:1);return n;}
-                @Override public int read(byte[] b,int off,int len)throws IOException{int n=super.read(b,off,len);count(n);return n;}
+                @Override public int read()throws IOException{context.checkActive();int n=super.read();count(n<0?0:1);return n;}
+                @Override public int read(byte[] b,int off,int len)throws IOException{context.checkActive();int n=super.read(b,off,len);count(n);return n;}
             };
         }
         @Override public void close()throws IOException{context.detach(cancellation);try{response.close();}finally{client.close();}}

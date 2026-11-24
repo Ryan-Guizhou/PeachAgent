@@ -19,8 +19,18 @@ public final class SseFrameReader {
         byte[] buffer = new byte[4096];
         Frame frame = new Frame(consumer);
         boolean skipLf = false;
-        int count;
-        while ((count = input.read(buffer)) != -1) {
+        int first;
+        while ((first = input.read()) != -1) {
+            // 仅首字节阻塞；其余只读取已缓冲数据，防止流包装器等待填满请求长度。
+            buffer[0] = (byte) first;
+            int count = 1;
+            int ready = Math.min(buffer.length - 1,input.available());
+            if (ready > 0) {
+                int extra = input.read(buffer,1,ready);
+                if (extra > 0) {
+                    count += extra;
+                }
+            }
             for (int index = 0; index < count; index++) {
                 int value = buffer[index] & 0xff;
                 if (skipLf) {
