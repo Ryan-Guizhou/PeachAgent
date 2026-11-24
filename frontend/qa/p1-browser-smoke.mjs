@@ -23,6 +23,42 @@ try {
   await page.goto(base+'/#/runs')
   await page.waitForFunction(() => document.querySelector('main')?.textContent?.includes('SUCCEEDED'))
   await page.screenshot({path:join(evidence,'real-runs.png')})
+  // Delay the first real detail response; a later selection must retain ownership of the panel.
+  const workspaceId=await page.locator('.scope select').first().inputValue()
+  const projectId=await page.locator('.scope select').nth(1).inputValue()
+  const runPath='/api/v1/workspaces/'+encodeURIComponent(workspaceId)+'/projects/'+encodeURIComponent(projectId)+'/runs'
+  const runResponse=await page.request.get(base+runPath)
+  assert.ok(runResponse.ok())
+  const runRows=await runResponse.json()
+  assert.ok(runRows.length>=2)
+  const first=runRows[0],second=runRows[1]
+  assert.notEqual(first.traceId,second.traceId)
+  const firstDetail=base+runPath+'/'+first.id
+  let releaseFirst
+  const gate=new Promise(resolve=>{releaseFirst=resolve})
+  const handler=async route=>{
+    const response=await route.fetch()
+    await gate
+    await route.fulfill({response})
+  }
+  await page.route(firstDetail,handler)
+  try{
+    const firstRequest=page.waitForRequest(request=>request.url()===firstDetail)
+    await page.locator('main .list-row').nth(0).getByRole('button',{name:/详情|Details/}).click()
+    await firstRequest
+    await page.locator('main .list-row').nth(1).getByRole('button',{name:/详情|Details/}).click()
+    await page.getByText(second.traceId,{exact:true}).waitFor()
+    const delivered=page.waitForResponse(response=>response.url()===firstDetail)
+    releaseFirst()
+    await delivered
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))
+    assert.ok(await page.getByText(second.traceId,{exact:true}).isVisible())
+    assert.equal(await page.getByText(first.traceId,{exact:true}).count(),0)
+    console.log('PASS: out-of-order real run detail responses cannot replace the latest selection')
+  }finally{
+    releaseFirst()
+    await page.unroute(firstDetail,handler)
+  }
   // Verify that persisted prompt and actual model registration are visible.
   await page.goto(base+'/#/prompts')
   await page.getByText('Fixture prompt',{exact:true}).first().waitFor()
