@@ -7,9 +7,9 @@ spring:
     virtual:
       enabled: true
   datasource:
-    url: ${DB_URL}
-    username: ${DB_USER}
-    password: ${DB_PASSWORD}
+    url:  jdbc:mysql://127.0.0.1:3306/peachagent?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&characterEncoding=UTF-8
+    username: root
+    password: 123456
     hikari:
       maximum-pool-size: ${DB_POOL_SIZE:16}
       data-source-properties:
@@ -21,7 +21,7 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
+      password: ${REDIS_PASSWORD:123456}
       timeout: 3s
   flyway:
     enabled: true
