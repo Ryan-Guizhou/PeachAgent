@@ -40,7 +40,7 @@ public class RunController {
     @GetMapping(value="/runs/{id}/events",produces=MediaType.TEXT_EVENT_STREAM_VALUE)
     public ResponseEntity<StreamingResponseBody> events(@PathVariable String w,@PathVariable String p,@PathVariable String id,
             @RequestHeader(value="Last-Event-ID",required=false) Long last,@RequestParam(defaultValue="0") long after){
-        var principal=identity.current();var scope=identity.project(w,p);runs.get(scope,id);String token=StpUtil.getTokenValue();
+        var principal=identity.current();var scope=identity.project(principal,w,p,false);runs.get(scope,id);String token=StpUtil.getTokenValue();
         long cursor=Math.max(after,last==null?0:last);
         StreamingResponseBody body=out->{
             if(!streams.tryAcquire())return;
@@ -48,17 +48,20 @@ public class RunController {
                 long seq=cursor,end=System.nanoTime()+25_000_000_000L;
                 while(System.nanoTime()<end){
                     Object logged=StpUtil.getLoginIdByToken(token);
-                    if(logged==null||!scope.userId().equals(logged.toString())||identity.active(scope.userId()).authEpoch()!=principal.authEpoch())break;
-                    identity.assertCurrentScope(scope);
-                    var events=runs.events(scope,id,seq);
-                    for(var event:events){
+                    if(logged==null||!scope.userId().equals(logged.toString()))break;
+                    var current=identity.active(scope.userId());
+                    if(current.authEpoch()!=principal.authEpoch())break;
+                    identity.assertCurrentScope(current,scope);
+                    var page=runs.eventPage(scope,id,seq);
+                    for(var event:page.events()){
                         seq=((Number)event.get("seq")).longValue();
                         String data="id: "+seq+"\nevent: "+event.get("eventType")+"\ndata: "+mapper.writeValueAsString(event)+"\n\n";
                         out.write(data.getBytes(StandardCharsets.UTF_8));out.flush();
                     }
-                    if(events.size()<100&&runs.terminal(scope,id))break;
-                    if(events.isEmpty()){out.write(": heartbeat\n\n".getBytes(StandardCharsets.UTF_8));out.flush();}
-                    try{Thread.sleep(250);}catch(InterruptedException ex){Thread.currentThread().interrupt();break;}
+                    if(page.drained(seq))break;
+                    if(page.events().size()==100)continue;
+                    if(page.events().isEmpty()){out.write(": heartbeat\n\n".getBytes(StandardCharsets.UTF_8));out.flush();}
+                    try{Thread.sleep(100);}catch(InterruptedException ex){Thread.currentThread().interrupt();break;}
                 }
             }catch(DomainException ex){/* 权限变更立即关闭流，客户端重新鉴权。 */}
             finally{streams.release();}

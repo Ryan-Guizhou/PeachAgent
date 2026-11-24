@@ -75,23 +75,42 @@ public class RunService {
         if(cursor.hasTieBreaker()){
             sql+=" AND (CREATED_AT < ? OR (CREATED_AT = ? AND ID < ?))";
             args.add(cursor.time());args.add(cursor.time());args.add(cursor.id());
-        }else{
+        }else if(cursor.time()!=null){
             sql+=" AND CREATED_AT <= ?";
-            args.add(cursor.time()==null?time.now():cursor.time());
+            args.add(cursor.time());
+        }else{
+            sql+=" AND CREATED_AT <= DATE_FORMAT(UTC_TIMESTAMP(), '%Y%m%d%H%i%s')";
         }
         args.add(Math.max(1,Math.min(limit,100)));
         return jdbc.queryForList(sql+" ORDER BY CREATED_AT DESC,ID DESC LIMIT ?",args.toArray())
                 .stream().map(x->JsonData.view(mapper,x)).toList();
     }
-    public List<Map<String,Object>> events(ScopeContext s,String id,long after){
-        scoped(s,id,false);
-        return jdbc.queryForList("""
-                SELECT SEQ,EVENT_TYPE,PAYLOAD,CREATED_AT FROM RT_RUN_EVENT
-                WHERE TENANT_ID = ? AND WORKSPACE_ID = ? AND PROJECT_ID = ? AND RUN_ID = ? AND SEQ > ? ORDER BY SEQ LIMIT 100
-                """,s.tenantId(),s.workspaceId(),s.requireProject(),id,Math.max(0,after))
-                .stream().map(x->JsonData.view(mapper,x,"PAYLOAD")).toList();
+    /** 同一个 Run 状态快照的事件高水位，只有全部交付后才允许关闭终态流。 */
+    public record EventPage(List<Map<String,Object>> events,boolean terminal,long lastSequence) {
+        public boolean drained(long deliveredSequence){
+            return terminal && deliveredSequence >= lastSequence;
+        }
     }
-    public boolean terminal(ScopeContext s,String id){return TERMINAL.contains(scoped(s,id,false).get("STATUS"));}
+
+    public EventPage eventPage(ScopeContext s,String id,long after){
+        // 先读取同一行的状态和序号，防止终态在事件查询与结束判断之间提交导致漏发。
+        var rows=jdbc.queryForList("""
+                SELECT STATUS,NEXT_EVENT_SEQ FROM RT_RUN
+                WHERE TENANT_ID = ? AND WORKSPACE_ID = ? AND PROJECT_ID = ? AND ACTOR_USER_ID = ? AND ID = ?
+                """,s.tenantId(),s.workspaceId(),s.requireProject(),s.userId(),id);
+        if(rows.isEmpty())throw IdentityService.missing();
+        var row=rows.getFirst();
+        long lastSequence=n(row,"NEXT_EVENT_SEQ")-1;
+        boolean terminal=TERMINAL.contains(row.get("STATUS"));
+        if(after>=lastSequence)return new EventPage(List.of(),terminal,lastSequence);
+        var events=jdbc.queryForList("""
+                SELECT SEQ,EVENT_TYPE,PAYLOAD,CREATED_AT FROM RT_RUN_EVENT
+                WHERE TENANT_ID = ? AND WORKSPACE_ID = ? AND PROJECT_ID = ? AND RUN_ID = ?
+                AND SEQ > ? AND SEQ <= ? ORDER BY SEQ LIMIT 100
+                """,s.tenantId(),s.workspaceId(),s.requireProject(),id,Math.max(0,after),lastSequence)
+                .stream().map(x->JsonData.view(mapper,x,"PAYLOAD")).toList();
+        return new EventPage(events,terminal,lastSequence);
+    }
     private Map<String,Object> existing(ScopeContext s,String key,byte[] hash){
         if(key==null||!key.matches("[A-Za-z0-9._-]{1,80}"))throw new DomainException("IDEMPOTENCY_REQUIRED",422,"Idempotency-Key required");
         var rows=jdbc.queryForList("""

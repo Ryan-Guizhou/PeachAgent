@@ -61,19 +61,25 @@ public class IdentityService {
     }
 
     public ScopeContext project(Principal p, String workspaceId, String projectId, boolean includeArchived) {
-        ScopeContext scope = workspace(p, workspaceId, includeArchived);
-        List<String> found = jdbc.queryForList("""
-                SELECT ID FROM IAM_PROJECT
-                WHERE TENANT_ID = ? AND WORKSPACE_ID = ? AND ID = ?
-                AND (STATUS = 'ACTIVE' OR ? = TRUE)
-                """, String.class, scope.tenantId(), scope.workspaceId(), projectId, includeArchived);
+        // 复合归属与状态在同一个查询内验证，避免逐级重复获取连接。
+        List<ScopeContext> found = jdbc.query("""
+                SELECT W.ID AS WORKSPACE_ID,P.ID AS PROJECT_ID
+                FROM IAM_PROJECT P JOIN IAM_WORKSPACE W ON W.TENANT_ID = P.TENANT_ID AND W.ID = P.WORKSPACE_ID
+                WHERE P.TENANT_ID = ? AND P.WORKSPACE_ID = ? AND P.ID = ?
+                  AND (W.STATUS = 'ACTIVE' OR ? = TRUE) AND (P.STATUS = 'ACTIVE' OR ? = TRUE)
+                """, (rs,n) -> new ScopeContext(p.userId(),p.tenantId(),rs.getString("WORKSPACE_ID"),
+                rs.getString("PROJECT_ID")),p.tenantId(),workspaceId,projectId,includeArchived,includeArchived);
         if (found.isEmpty()) throw missing();
-        return new ScopeContext(p.userId(), p.tenantId(), scope.workspaceId(), found.getFirst());
+        return found.getFirst();
     }
 
     public void assertCurrentScope(ScopeContext scope) {
-        Principal p = active(scope.userId());
-        if (!p.tenantId().equals(scope.tenantId())) throw missing();
+        assertCurrentScope(active(scope.userId()),scope);
+    }
+
+    /** 调用方在本次操作中刚验证有效账号时，复用该身份快照；仍重新检查资源归属及状态。 */
+    public void assertCurrentScope(Principal p,ScopeContext scope) {
+        if (!p.userId().equals(scope.userId()) || !p.tenantId().equals(scope.tenantId())) throw missing();
         if (scope.projectId() == null) workspace(p, scope.workspaceId(), false);
         else project(p, scope.workspaceId(), scope.projectId(), false);
     }
