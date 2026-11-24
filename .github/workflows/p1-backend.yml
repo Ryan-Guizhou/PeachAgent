@@ -47,6 +47,7 @@ jobs:
         working-directory: frontend
         run: |
           npm ci --no-audit --no-fund
+          npm run format:check
           npm run build
           npx playwright install --with-deps chromium
       - name: Verify Java engineering rules
