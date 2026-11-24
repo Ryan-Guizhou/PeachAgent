@@ -1,0 +1,42 @@
+{
+  "workspaceId": "00000000-0000-4000-8000-000000000001",
+  "projectId": "00000000-0000-4000-8000-000000000002",
+  "models": [
+    {
+      "modelId": "00000000-0000-4000-8000-000000000010",
+      "modelType": "LLM",
+      "vendorKey": "openai",
+      "protocolKey": "openai.chat-completions"
+    },
+    {
+      "modelId": "00000000-0000-4000-8000-000000000011",
+      "modelType": "EMBEDDING",
+      "vendorKey": "openai",
+      "protocolKey": "openai.embeddings"
+    },
+    {
+      "modelId": "00000000-0000-4000-8000-000000000012",
+      "modelType": "RERANK",
+      "vendorKey": "dashscope",
+      "protocolKey": "dashscope.text-rerank"
+    },
+    {
+      "modelId": "00000000-0000-4000-8000-000000000013",
+      "modelType": "IMAGE",
+      "vendorKey": "openai",
+      "protocolKey": "openai.images"
+    },
+    {
+      "modelId": "00000000-0000-4000-8000-000000000014",
+      "modelType": "STT",
+      "vendorKey": "openai",
+      "protocolKey": "openai.audio-transcriptions"
+    },
+    {
+      "modelId": "00000000-0000-4000-8000-000000000015",
+      "modelType": "TTS",
+      "vendorKey": "openai",
+      "protocolKey": "openai.audio-speech"
+    }
+  ]
+}
