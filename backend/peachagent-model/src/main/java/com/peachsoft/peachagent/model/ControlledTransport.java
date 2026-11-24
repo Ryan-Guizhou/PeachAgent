@@ -53,25 +53,41 @@ public class ControlledTransport {
                     return host;
                 }
             };
-            var manager=PoolingHttpClientConnectionManagerBuilder.create().setDnsResolver(dns)
+            // 请求参数先校验，避免在创建连接管理器之后因非法参数泄漏资源。
+            HttpPost post = new HttpPost(uri);
+            if (!"NONE".equals(auth) && (secret == null || secret.isBlank())) {
+                throw new DomainException("CREDENTIAL_REQUIRED", 422, "Model credential required");
+            }
+            if ("BEARER".equals(auth)) {
+                post.setHeader("Authorization", "Bearer " + secret);
+            } else if ("API_KEY".equals(auth)) {
+                post.setHeader("x-api-key", secret);
+            } else if (!"NONE".equals(auth)) {
+                throw new DomainException("AUTH_UNSUPPORTED", 422, "Authentication not supported");
+            }
+            fixedHeaders.forEach((name, value) -> {
+                if (!name.equalsIgnoreCase("anthropic-version")) {
+                    throw new DomainException("HEADER_DENIED", 422, "Unsupported protocol header");
+                }
+                post.setHeader(name, value);
+            });
+            post.setEntity(new ByteArrayEntity(body, ContentType.parse(contentType)));
+
+            var manager = PoolingHttpClientConnectionManagerBuilder.create().setDnsResolver(dns)
                     .setDefaultConnectionConfig(ConnectionConfig.custom().setConnectTimeout(Timeout.ofSeconds(5))
                             .setSocketTimeout(Timeout.ofMilliseconds(timeout)).build()).build();
-            CloseableHttpClient client=HttpClients.custom().setConnectionManager(manager).disableAutomaticRetries()
+            CloseableHttpClient client = HttpClients.custom().setConnectionManager(manager).disableAutomaticRetries()
                     .disableRedirectHandling().disableCookieManagement()
                     .setDefaultRequestConfig(RequestConfig.custom().setResponseTimeout(Timeout.ofMilliseconds(timeout)).build()).build();
-            HttpPost post=new HttpPost(uri);
-            if(!"NONE".equals(auth)&&(secret==null||secret.isBlank())){client.close();throw new DomainException("CREDENTIAL_REQUIRED",422,"Model credential required");}
-            if("BEARER".equals(auth))post.setHeader("Authorization","Bearer "+secret);
-            else if("API_KEY".equals(auth))post.setHeader("x-api-key",secret);
-            else if(!"NONE".equals(auth)){client.close();throw new DomainException("AUTH_UNSUPPORTED",422,"Authentication not supported");}
-            fixedHeaders.forEach((name,value)->{
-                if(!name.equalsIgnoreCase("anthropic-version"))throw new DomainException("HEADER_DENIED",422,"Unsupported protocol header");
-                post.setHeader(name,value);
-            });
-            post.setEntity(new ByteArrayEntity(body,ContentType.parse(contentType)));
-            Closeable cancellation=()->{post.cancel();client.close();};
-            context.attach(cancellation);
+            Closeable cancellation = () -> {
+                try {
+                    post.cancel();
+                } finally {
+                    client.close();
+                }
+            };
             try {
+                context.attach(cancellation);
                 ClassicHttpResponse response=client.executeOpen(null,post,null);
                 int code=response.getCode();
                 if(code<200||code>=300){response.close();throw new DomainException("MODEL_HTTP_"+code,502,"Model provider rejected request");}
@@ -80,7 +96,13 @@ public class ControlledTransport {
                 String requestId=response.getFirstHeader("x-request-id")==null?null:response.getFirstHeader("x-request-id").getValue();
                 return new Response(response,client,cancellation,context,mime,requestId);
             }catch(IOException|RuntimeException error){
-                context.detach(cancellation);client.close();throw error;
+                context.detach(cancellation);
+                try {
+                    client.close();
+                } catch (IOException closeError) {
+                    error.addSuppressed(closeError);
+                }
+                throw error;
             }
         }
     }
