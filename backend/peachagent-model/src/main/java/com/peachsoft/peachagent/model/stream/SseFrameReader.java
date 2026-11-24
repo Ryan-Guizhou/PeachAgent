@@ -1,21 +1,26 @@
 package com.peachsoft.peachagent.model.stream;
 
 import com.peachsoft.peachagent.common.DomainException;
+
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.function.BiConsumer;
 
-/** 逐片段读取 SSE，立即交付完整事件，并限制单行与事件字节数。 */
+/**
+ * 逐片段读取 SSE，立即交付完整事件，并限制单行与事件字节数。
+ * @Author Mr Shu
+ * @Version 1.0.0
+ * @CreateTime 2026/11/24 17:48
+ */
 public final class SseFrameReader {
     private static final int MAX_FRAME_BYTES = 1024 * 1024;
 
-    private SseFrameReader() {
-    }
+    private SseFrameReader() {}
 
     /** 支持 LF、CRLF、CR、跨片段 UTF-8 和多行 data；保留协议层的 EOF 判定。 */
-    public static boolean read(InputStream input,BiConsumer<String,String> consumer) throws IOException {
+    public static boolean read(InputStream input, BiConsumer<String, String> consumer) throws IOException {
         byte[] buffer = new byte[4096];
         Frame frame = new Frame(consumer);
         boolean skipLf = false;
@@ -24,9 +29,9 @@ public final class SseFrameReader {
             // 仅首字节阻塞；其余只读取已缓冲数据，防止流包装器等待填满请求长度。
             buffer[0] = (byte) first;
             int count = 1;
-            int ready = Math.min(buffer.length - 1,input.available());
+            int ready = Math.min(buffer.length - 1, input.available());
             if (ready > 0) {
-                int extra = input.read(buffer,1,ready);
+                int extra = input.read(buffer, 1, ready);
                 if (extra > 0) {
                     count += extra;
                 }
@@ -52,16 +57,22 @@ public final class SseFrameReader {
         return frame.finishLine() || frame.dispatch();
     }
 
+    /**
+     * 完成解析的 SSE 帧，保留多行数据与事件语义。
+     * @Author Mr Shu
+     * @Version 1.0.0
+     * @CreateTime 2026/11/24 17:48
+     */
     private static final class Frame {
         private final ByteArrayOutputStream line = new ByteArrayOutputStream(256);
         private final StringBuilder data = new StringBuilder();
-        private final BiConsumer<String,String> consumer;
+        private final BiConsumer<String, String> consumer;
         private String event = "";
         private int dataBytes;
         private boolean firstLine = true;
         private boolean hasData;
 
-        private Frame(BiConsumer<String,String> consumer) {
+        private Frame(BiConsumer<String, String> consumer) {
             this.consumer = consumer;
         }
 
@@ -107,7 +118,7 @@ public final class SseFrameReader {
                 if ("[DONE]".equals(value)) {
                     return true;
                 }
-                consumer.accept(event,value);
+                consumer.accept(event, value);
             }
             data.setLength(0);
             dataBytes = 0;
@@ -118,6 +129,6 @@ public final class SseFrameReader {
     }
 
     private static DomainException invalid() {
-        return new DomainException("MODEL_RESPONSE_INVALID",502,"Model SSE frame exceeds limit");
+        return new DomainException("MODEL_RESPONSE_INVALID", 502, "Model SSE frame exceeds limit");
     }
 }

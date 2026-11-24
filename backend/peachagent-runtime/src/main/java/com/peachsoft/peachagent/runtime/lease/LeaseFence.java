@@ -1,10 +1,14 @@
 package com.peachsoft.peachagent.runtime.lease;
 
-/** Worker 持久租约的 fencing 判定。时间值均使用数据库 UTC yyyyMMddHHmmss。 */
+/**
+ * Worker 持久租约的 fencing 判定。时间值均使用数据库 UTC yyyyMMddHHmmss。
+ * @Author Mr Shu
+ * @Version 1.0.0
+ * @CreateTime 2026/11/24 15:05
+ */
 public final class LeaseFence {
 
-    private LeaseFence() {
-    }
+    private LeaseFence() {}
 
     /**
      * 校验租约持有者、代次及严格过期边界。
@@ -17,10 +21,13 @@ public final class LeaseFence {
      * @param now 当前数据库时间
      * @return 当前执行者仍可变更运行事实时返回 true
      */
-    public static boolean isCurrent(String expectedOwner, long expectedEpoch, String owner,
-                                    long epoch, String expiresAt, String now) {
-        return expectedOwner != null && expectedOwner.equals(owner)
-                && expectedEpoch == epoch && expiresAt != null && now != null
+    public static boolean isCurrent(
+            String expectedOwner, long expectedEpoch, String owner, long epoch, String expiresAt, String now) {
+        return expectedOwner != null
+                && expectedOwner.equals(owner)
+                && expectedEpoch == epoch
+                && expiresAt != null
+                && now != null
                 && expiresAt.compareTo(now) > 0;
     }
 }

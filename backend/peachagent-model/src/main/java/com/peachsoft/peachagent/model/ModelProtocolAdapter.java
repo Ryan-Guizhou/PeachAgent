@@ -1,6 +1,11 @@
 package com.peachsoft.peachagent.model;
 
-/** 受信协议扩展 SPI，禁止在实现中绕过统一受控网络和计量。 */
+/**
+ * 受信协议扩展 SPI，禁止在实现中绕过统一受控网络和计量。
+ * @Author Mr Shu
+ * @Version 1.0.0
+ * @CreateTime 2026/11/24 11:31
+ */
 public interface ModelProtocolAdapter {
     ProtocolDescriptor descriptor();
 

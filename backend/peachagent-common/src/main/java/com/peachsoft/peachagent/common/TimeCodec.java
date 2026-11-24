@@ -9,13 +9,17 @@ import java.time.temporal.ChronoUnit;
 import java.util.Locale;
 import java.util.Objects;
 
-/** 业务时间点统一为 UTC 的十四位年月日时分秒字符串。 */
+/**
+ * 业务时间点统一为 UTC 的十四位年月日时分秒字符串。
+ * @Author Mr Shu
+ * @Version 1.0.0
+ * @CreateTime 2026/11/24 11:27
+ */
 public final class TimeCodec {
     private static final DateTimeFormatter FORMAT =
-            DateTimeFormatter.ofPattern("uuuuMMddHHmmss", Locale.ROOT)
-                    .withResolverStyle(ResolverStyle.STRICT);
+            DateTimeFormatter.ofPattern("uuuuMMddHHmmss", Locale.ROOT).withResolverStyle(ResolverStyle.STRICT);
 
-    private TimeCodec() { }
+    private TimeCodec() {}
 
     public static String format(Instant value) {
         LocalDateTime utc = LocalDateTime.ofInstant(Objects.requireNonNull(value), ZoneOffset.UTC);
