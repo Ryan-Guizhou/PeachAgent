@@ -13,6 +13,9 @@ for i in $(seq 1 90); do
 done
 sql < "$ROOT/database/INIT_DATABASE.SQL"
 sql PEACHAGENT < "$ROOT/backend/peachagent-bootstrap/src/main/resources/db/migration/V1__INITIAL_SCHEMA.sql"
+# Validate the forward migration from the original schema, then assert the added index.
+sql PEACHAGENT < "$ROOT/backend/peachagent-bootstrap/src/main/resources/db/migration/V2__RUNTIME_QUEUE_INDEX.sql"
+test "$(sql -e "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = 'PEACHAGENT' AND TABLE_NAME = 'RT_RUN' AND INDEX_NAME = 'IX_RT_RUN_TENANT_STATUS_PROJECT'")" = 3
 test "$(sql -e "SELECT @@LOWER_CASE_TABLE_NAMES")" = 1
 test "$(sql -e "SELECT DEFAULT_COLLATION_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = 'PEACHAGENT'")" = utf8mb4_0900_ai_ci
 test "$(sql -e "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'PEACHAGENT' AND TABLE_TYPE = 'BASE TABLE'")" = 25

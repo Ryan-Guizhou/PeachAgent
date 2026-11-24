@@ -88,6 +88,36 @@ try {
   await page.getByText('Fixture answer',{exact:true}).first().waitFor()
   await page.getByRole('button',{name:/^复用$|^Reuse$/}).last().click()
   assert.equal(await page.getByRole('textbox',{name:/输入消息|Enter message/}).inputValue(),'Fixture answer')
+  // The partial failure is a real persisted response, not a fabricated UI sample.
+  const chatScope='/api/v1/workspaces/'+workspaceId+'/projects/'+projectId
+  const chatRows=await (await page.request.get(base+chatScope+'/conversations')).json()
+  const partial=chatRows.find(row=>row.title==='Partial response QA')
+  const original=chatRows.find(row=>row.title==='Fixture conversation')
+  assert.ok(partial&&original)
+  const partialPath=base+chatScope+'/conversations/'+partial.id+'/messages'
+  let releaseChat
+  const chatGate=new Promise(resolve=>{releaseChat=resolve})
+  const delayChat=async route=>{const response=await route.fetch();await chatGate;await route.fulfill({response})}
+  await page.route(partialPath,delayChat)
+  try{
+    const requested=page.waitForRequest(request=>request.url()===partialPath)
+    await page.getByRole('button',{name:/Partial response QA/}).click()
+    await requested
+    await page.getByRole('button',{name:/Fixture conversation/}).click()
+    await page.getByText('Fixture answer',{exact:true}).first().waitFor()
+    const delivered=page.waitForResponse(response=>response.url()===partialPath)
+    releaseChat();await delivered
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))
+    assert.equal(await page.getByText('Retained partial response',{exact:true}).count(),0)
+  }finally{releaseChat();await page.unroute(partialPath,delayChat)}
+  await page.getByRole('button',{name:/Partial response QA/}).click()
+  await page.getByText('Retained partial response',{exact:true}).waitFor()
+  assert.equal(await page.getByText('Retained partial response',{exact:true}).count(),1)
+  assert.ok(await page.locator('.message').filter({hasText:'Retained partial response'}).getByText('ERROR',{exact:true}).isVisible())
+  await page.reload()
+  await page.getByRole('button',{name:/Partial response QA/}).click()
+  await page.getByText('Retained partial response',{exact:true}).waitFor()
+  console.log('PASS: retained partial response, refresh and stale conversation response isolation')
   await page.getByRole('button',{name:/新对话|New chat/}).click()
   await page.getByRole('button',{name:/归档会话|Archive chat/}).click()
   await page.getByText(/此会话为只读|This conversation is read-only/).waitFor()
@@ -104,6 +134,12 @@ try {
   await page.locator('.dialog input').first().fill('Browser QA workspace')
   await page.locator('.dialog button[type=submit], .dialog button.primary').first().click()
   await page.locator('.scope select').first().locator('option').filter({hasText:'Browser QA workspace'}).waitFor({state:'attached',timeout:15000})
+  // The option appears before async project reload and dirty-dialog cleanup complete.
+  await page.locator('.overlay').waitFor({state:'hidden',timeout:20000})
+  await page.waitForFunction(({workspaceId,projectId})=>{
+    const selectors=document.querySelectorAll('.scope select')
+    return selectors[0]?.value===workspaceId&&selectors[1]?.value===projectId
+  },{workspaceId,projectId},{timeout:20000})
   await page.goto(base+'/#/usage')
   await page.locator('#budget-overview-title').waitFor()
   await page.locator('.budget-block').last().waitFor()

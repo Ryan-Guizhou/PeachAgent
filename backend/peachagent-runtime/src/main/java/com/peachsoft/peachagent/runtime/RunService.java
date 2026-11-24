@@ -14,11 +14,17 @@ import java.util.*;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.dao.ConcurrencyFailureException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tools.jackson.databind.json.JsonMapper;
 
 /** 持久 Run 状态机。外部推理始终在事务之外，派发意图与预算先落库。 */
 @Service
 public class RunService {
+    private static final Logger log=LoggerFactory.getLogger(RunService.class);
     private final JdbcTemplate jdbc;
     private final IdGenerator ids;
     private final DatabaseTimeProvider time;
@@ -34,7 +40,10 @@ public class RunService {
             ConversationService chat,PromptService prompts,ModelService models,BudgetService budgets,
             JsonMapper mapper,TransactionTemplate tx,ArtifactStore artifacts){
         this.jdbc=jdbc;this.ids=ids;this.time=time;this.identity=identity;this.chat=chat;this.prompts=prompts;
-        this.models=models;this.budgets=budgets;this.mapper=mapper;this.tx=tx;this.artifacts=artifacts;
+        this.models=models;this.budgets=budgets;this.mapper=mapper;this.artifacts=artifacts;
+        // 只调整 Runtime 短事务，不改变 IAM、配置及其他模块的事务隔离。
+        this.tx=new TransactionTemplate(tx.getTransactionManager());
+        this.tx.setIsolationLevel(TransactionDefinition.ISOLATION_READ_COMMITTED);
     }
     public record ChatInput(String modelId,String text,String promptVersionId,Map<String,Object> variables,Integer maxOutputTokens) { }
     public record DebugInput(Map<String,Object> input,String audioBase64,Integer maxOutputTokens) { }
@@ -47,7 +56,31 @@ public class RunService {
     private static String str(Map<String,Object> m,String k){return (String)m.get(k);}
     private static DomainException conflict(String code,String msg){return new DomainException(code,409,msg);}
     private String json(Object x){return mapper.writeValueAsString(x);}
-    private void tenantLock(ScopeContext s){jdbc.queryForObject("SELECT ID FROM IAM_TENANT WHERE ID = ? FOR UPDATE",String.class,s.tenantId());identity.assertCurrentScope(s);}
+    private void tenantLock(ScopeContext s){
+        jdbc.queryForObject("SELECT ID FROM IAM_TENANT WHERE ID = ? FOR UPDATE",String.class,s.tenantId());
+        identity.assertCurrentScope(s);
+    }
+
+    /** 所有产生子表记录的 Runtime 事务先获取租户父行共享锁，再锁 Run/Call/预算；受理及归档仍用排他锁。 */
+    private void tenantShare(String tenantId){
+        jdbc.queryForObject("SELECT ID FROM IAM_TENANT WHERE ID = ? FOR SHARE",String.class,tenantId);
+    }
+
+    /** 受理事务明确回滚才重试；原幂等键及摘要不变，不进行任何外部派发。 */
+    private <T> T createTransaction(TransactionCallback<T> callback){
+        for(int attempt=1;;attempt++){
+            try{return tx.execute(callback);}
+            catch(ConcurrencyFailureException ex){
+                if(attempt>=3)throw new DomainException("RUN_BUSY",409,"Run admission busy; retry with the same idempotency key");
+                log.warn("Run admission transaction retry attempt={} type={}",attempt,ex.getClass().getSimpleName());
+                try{Thread.sleep(15L*attempt);}
+                catch(InterruptedException interrupted){
+                    Thread.currentThread().interrupt();
+                    throw new DomainException("RUN_BUSY",409,"Run admission interrupted");
+                }
+            }
+        }
+    }
     private Map<String,Object> row(String id,boolean lock){
         var rows=jdbc.queryForList("SELECT * FROM RT_RUN WHERE ID = ?"+(lock?" FOR UPDATE":""),id);
         if(rows.isEmpty())throw IdentityService.missing();return rows.getFirst();
@@ -82,8 +115,7 @@ public class RunService {
             sql+=" AND CREATED_AT <= DATE_FORMAT(UTC_TIMESTAMP(), '%Y%m%d%H%i%s')";
         }
         args.add(Math.max(1,Math.min(limit,100)));
-        return jdbc.queryForList(sql+" ORDER BY CREATED_AT DESC,ID DESC LIMIT ?",args.toArray())
-                .stream().map(x->JsonData.view(mapper,x)).toList();
+        return JsonData.viewRows(mapper,jdbc.queryForList(sql+" ORDER BY CREATED_AT DESC,ID DESC LIMIT ?",args.toArray()));
     }
     /** 同一个 Run 状态快照的事件高水位，只有全部交付后才允许关闭终态流。 */
     public record EventPage(List<Map<String,Object>> events,boolean terminal,long lastSequence) {
@@ -122,10 +154,11 @@ public class RunService {
         return view(old);
     }
     private void queueLimit(ScopeContext s){
-        Integer total=jdbc.queryForObject("SELECT COUNT(*) FROM RT_RUN WHERE TENANT_ID = ? AND STATUS IN ('QUEUED','RUNNING','CANCEL_REQUESTED')",Integer.class,s.tenantId());
-        Integer project=jdbc.queryForObject("SELECT COUNT(*) FROM RT_RUN WHERE TENANT_ID = ? AND WORKSPACE_ID = ? AND PROJECT_ID = ? AND STATUS IN ('QUEUED','RUNNING','CANCEL_REQUESTED')",
-                Integer.class,s.tenantId(),s.workspaceId(),s.requireProject());
-        if(total>=128||project>=32)throw conflict("QUEUE_FULL","Run queue full");
+        var counts=jdbc.queryForMap("""
+                SELECT COUNT(*) AS TOTAL_COUNT,COALESCE(SUM(PROJECT_ID = ?),0) AS PROJECT_COUNT
+                FROM RT_RUN WHERE TENANT_ID = ? AND STATUS IN ('QUEUED','RUNNING','CANCEL_REQUESTED')
+                """,s.requireProject(),s.tenantId());
+        if(n(counts,"TOTAL_COUNT")>=128||n(counts,"PROJECT_COUNT")>=32)throw conflict("QUEUE_FULL","Run queue full");
     }
     private int output(ModelService.Snapshot m,Integer requested){
         int max=m.options().get("maxOutputTokens") instanceof Number n?Math.min(32768,n.intValue()):2048;
@@ -158,7 +191,7 @@ public class RunService {
         JsonData.requiredText(input.text(),65536);
         if(size(input.text())>65536)throw new DomainException("INVALID_FIELD",422,"Input exceeds 64 KiB");
         byte[] hash=SecurityTokens.digest("CHAT:"+conversation+":"+json(input));
-        return tx.execute(status->{
+        return createTransaction(status->{
             tenantLock(s);var old=existing(s,key,hash);if(old!=null)return old;queueLimit(s);
             var c=chat.require(s,conversation,true);
             if(!"ACTIVE".equals(c.get("STATUS"))||c.get("ACTIVE_RUN_ID")!=null)throw conflict("CONVERSATION_BUSY","Conversation unavailable or active");
@@ -180,7 +213,7 @@ public class RunService {
         Map<String,Object> values=input.input()==null?Map.of():input.input();
         if(json(values).length()>65536)throw new DomainException("INVALID_FIELD",422,"Debug input too large");
         byte[] hash=SecurityTokens.digest("DEBUG:"+modelId+":"+json(input));
-        return tx.execute(status->{
+        return createTransaction(status->{
             tenantLock(s);var old=existing(s,key,hash);if(old!=null)return old;queueLimit(s);
             var model=models.snapshot(s,modelId,true);int max=output(model,input.maxOutputTokens());String now=time.now(),id=ids.nextId();
             List<ModelExecutionRequest.Message> messages="CHAT".equals(model.operation())?List.of(new ModelExecutionRequest.Message("user",JsonData.requiredText((String)values.get("text"),65536))):List.of();
@@ -193,7 +226,7 @@ public class RunService {
     }
     public Map<String,Object> retry(ScopeContext s,String id,String key,boolean acknowledgeUnknown){
         byte[] hash=SecurityTokens.digest("RETRY:"+id+":"+acknowledgeUnknown);
-        return tx.execute(status->{
+        return createTransaction(status->{
             tenantLock(s);var old=existing(s,key,hash);if(old!=null)return old;queueLimit(s);
             var prior=scoped(s,id,false);
             if(!"CHAT".equals(prior.get("RUN_TYPE"))||!TERMINAL.contains(prior.get("STATUS"))||prior.get("REQUEST_SNAPSHOT")==null)
@@ -241,9 +274,16 @@ public class RunService {
     public Claim claim(String owner){
         return tx.execute(status->{
             String now=time.now();
-            var rows=jdbc.queryForList("""
-                    SELECT * FROM RT_RUN WHERE STATUS = 'QUEUED' AND DEADLINE_AT > ? ORDER BY QUEUED_AT,ID LIMIT 1 FOR UPDATE SKIP LOCKED
+            // 先无锁找候选，再按租户父行 -> Run 顺序领取，避免队列扫描锁阻塞新受理。
+            var candidates=jdbc.queryForList("""
+                    SELECT ID,TENANT_ID FROM RT_RUN WHERE STATUS = 'QUEUED' AND DEADLINE_AT > ? ORDER BY QUEUED_AT,ID LIMIT 1
                     """,now);
+            if(candidates.isEmpty())return null;
+            var candidate=candidates.getFirst();
+            tenantShare(str(candidate,"TENANT_ID"));
+            var rows=jdbc.queryForList("""
+                    SELECT * FROM RT_RUN WHERE ID = ? AND STATUS = 'QUEUED' AND DEADLINE_AT > ? FOR UPDATE SKIP LOCKED
+                    """,candidate.get("ID"),time.now());
             if(rows.isEmpty())return null;
             var r=rows.getFirst();long epoch=n(r,"LEASE_EPOCH")+1;String id=str(r,"ID");
             jdbc.update("""
@@ -271,6 +311,7 @@ public class RunService {
     }
     public String startCall(Claim c,long credentialRevision){
         return tx.execute(status->{
+            tenantShare(c.scope().tenantId());
             var r=row(c.id(),true);ensure(r,c);identity.assertCurrentScope(c.scope());
             if(c.payload().promptVersionId()!=null)prompts.renderVersion(c.scope(),c.payload().promptVersionId(),c.payload().variables());
             var p=c.payload().model();String id=ids.nextId(),now=time.now();ScopeContext s=c.scope();
@@ -289,6 +330,7 @@ public class RunService {
     }
     public void dispatch(Claim c,String call){
         tx.executeWithoutResult(status->{
+            tenantShare(c.scope().tenantId());
             var r=row(c.id(),true);ensure(r,c);identity.assertCurrentScope(c.scope());String now=time.now();
             if(jdbc.update("UPDATE RT_MODEL_CALL SET STATUS = 'DISPATCHING',DISPATCH_INTENT_AT = ?,UPDATED_AT = ? WHERE ID = ? AND RUN_ID = ? AND STATUS = 'PREPARED'",now,now,call,c.id())!=1)
                 throw conflict("CALL_STATE","Call already dispatched");
@@ -297,6 +339,7 @@ public class RunService {
     public void delta(Claim c,String call,String text){
         if(text.isEmpty())return;
         tx.executeWithoutResult(status->{
+            tenantShare(c.scope().tenantId());
             var r=row(c.id(),true);ensure(r,c);String now=time.now();
             jdbc.update("UPDATE RT_MODEL_CALL SET FIRST_TOKEN_AT = COALESCE(FIRST_TOKEN_AT,?),UPDATED_AT = ? WHERE ID = ? AND RUN_ID = ?",now,now,call,c.id());
             if(r.get("ASSISTANT_MESSAGE_ID")!=null)jdbc.update("UPDATE CHAT_MESSAGE SET CONTENT = CONCAT(COALESCE(CONTENT,''),?),UPDATED_AT = ? WHERE ID = ?",text,now,r.get("ASSISTANT_MESSAGE_ID"));
@@ -319,6 +362,7 @@ public class RunService {
     }
     public void finish(Claim c,String call,ModelExecution result,String failure,long elapsed){
         tx.executeWithoutResult(status->{
+            tenantShare(c.scope().tenantId());
             var r=row(c.id(),true);
             String now=time.now();
             if(!owned(r,c,now))return;
@@ -367,6 +411,7 @@ public class RunService {
     }
     public Map<String,Object> cancel(ScopeContext s,String id){
         return tx.execute(status->{
+            tenantShare(s.tenantId());identity.assertCurrentScope(s);
             var r=scoped(s,id,true);String now=time.now();
             if("QUEUED".equals(r.get("STATUS")))terminal(r,"CANCELLED",null,now,null);
             else if("RUNNING".equals(r.get("STATUS"))){
@@ -377,11 +422,14 @@ public class RunService {
         });
     }
     public void recover(){
-        for(String id:jdbc.queryForList("""
-                SELECT ID FROM RT_RUN WHERE (STATUS = 'QUEUED' AND DEADLINE_AT <= ?) OR
+        String cutoff=time.now();
+        for(var candidate:jdbc.queryForList("""
+                SELECT ID,TENANT_ID FROM RT_RUN WHERE (STATUS = 'QUEUED' AND DEADLINE_AT <= ?) OR
                 (STATUS IN ('RUNNING','CANCEL_REQUESTED') AND LEASE_UNTIL <= ?) LIMIT 32
-                """,String.class,time.now(),time.now())){
+                """,cutoff,cutoff)){
             tx.executeWithoutResult(status->{
+                tenantShare(str(candidate,"TENANT_ID"));
+                String id=str(candidate,"ID");
                 var r=row(id,true);String now=time.now();
                 if(TERMINAL.contains(r.get("STATUS")))return;
                 boolean queued="QUEUED".equals(r.get("STATUS"));

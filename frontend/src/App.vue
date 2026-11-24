@@ -22,9 +22,11 @@ const query=ref(''),edit=ref(''),form=ref<Row>({}),dirty=ref(false),stream=ref<E
 const previewText=ref<string|null>(null),manifestValid=ref(false)
 const mediaUrl=ref(''),mediaType=ref('')
 const selectedConversation=computed(()=>conversations.value.find(c=>c.id===conversation.value))
-const canSend=computed(()=>selectedConversation.value?.status==='ACTIVE'&&!activeRun.value)
+const canSend=computed(()=>selectedConversation.value?.status==='ACTIVE'&&!activeRun.value&&!selectedConversation.value?.activeRunId)
+const streamState=ref<'idle'|'connecting'|'connected'|'reconnecting'>('idle')
+const visibleMessages=computed(()=>messages.value.filter(m=>!(activeRun.value&&m.role==='ASSISTANT'&&m.status==='PENDING')))
 const { dialogRef, rememberFocus }=useDialogFocus(edit,()=>closeEdit())
-let generation=0,runSelection=0,stopWatch:()=>void=()=>{},refreshTimer:number|undefined
+let generation=0,runSelection=0,conversationSelection=0,stopWatch:()=>void=()=>{},refreshTimer:number|undefined
 const filtered=computed(()=>rows.value.filter(x=>JSON.stringify(x).toLocaleLowerCase().includes(query.value.toLocaleLowerCase())))
 const descriptor=computed(()=>protocols.value.find(x=>x.protocol.key===form.value.protocolKey&&x.protocol.version===form.value.protocolVersion))
 const activeBindings=computed(()=>bindings.value.filter(x=>x.status==='ACTIVE'&&x.enabled&&x.modelType==='LLM'))
@@ -37,8 +39,8 @@ function clearEdit(){edit.value='';form.value={};dirty.value=false;previewText.v
 function clearMedia(){if(mediaUrl.value)URL.revokeObjectURL(mediaUrl.value);mediaUrl.value='';mediaType.value=''}
 function canLeave(){return !dirty.value||window.confirm(tr('放弃未保存的内容？','Discard unsaved changes?'))}
 function closeEdit(){if(canLeave())clearEdit()}
-function stopStream(){stream.value?.close();stream.value=null}
-function clearPage(){generation++;runSelection++;stopStream();clearMedia();conversations.value=[];modelId.value='';promptVersionId.value='';chatText.value='';variables.value='{}';conversation.value='';activeRun.value='';streamText.value='';messages.value=[];runDetail.value=null;events.value=[];selectedPrompt.value=null;versions.value=[];rows.value=[];providers.value=[];credentials.value=[];bindings.value=[];defaults.value=[];references.value=[];calls.value=[];budgets.value=[];query.value='';clearEdit()}
+function stopStream(){stream.value?.close();stream.value=null;streamState.value='idle'}
+function clearPage(){generation++;runSelection++;conversationSelection++;stopStream();clearMedia();conversations.value=[];modelId.value='';promptVersionId.value='';chatText.value='';variables.value='{}';conversation.value='';activeRun.value='';streamText.value='';messages.value=[];runDetail.value=null;events.value=[];selectedPrompt.value=null;versions.value=[];rows.value=[];providers.value=[];credentials.value=[];bindings.value=[];defaults.value=[];references.value=[];calls.value=[];budgets.value=[];query.value='';clearEdit()}
 async function refresh(){
  const g=++generation,wp=s.w,pp=s.p,where=page.value;const valid=()=>g===generation&&s.user&&wp===s.w&&pp===s.p&&where===page.value
  if(!s.user||!s.workspaceId||(!s.projectId&&!['projects','credentials','plugins','settings'].includes(where)))return
@@ -148,27 +150,81 @@ async function showMedia(artifactId:string){
  })
 }
 async function newChat(){await action(async()=>{const c=await s.request<Row>(s.p+'/conversations','POST',{title:tr('新对话','New conversation')});await refresh();await openConversation(c.id)})}
-async function openConversation(id:string){stopStream();conversation.value=id;streamText.value='';const scope=s.p,g=generation;const result=await s.request<Row[]>(scope+'/conversations/'+id+'/messages');if(g!==generation||scope!==s.p||conversation.value!==id)return;messages.value=result;const c=conversations.value.find(x=>x.id===id);activeRun.value=c?.activeRunId||'';if(activeRun.value)subscribe(activeRun.value)}
-function subscribe(id:string){
- stopStream();activeRun.value=id;const scope=s.p;const source=new EventSource('/api/v1'+scope+'/runs/'+id+'/events');stream.value=source
- let cursor=0
+async function openConversation(id:string){
+ const selection=++conversationSelection,scope=s.p,g=generation
+ const switching=conversation.value!==id
+ if(switching){stopStream();messages.value=[];streamText.value='';activeRun.value='';chatText.value=''}
+ conversation.value=id
+ const valid=()=>selection===conversationSelection&&g===generation&&scope===s.p&&page.value==='chat'&&conversation.value===id
+ try{
+   const result=await s.request<Row[]>(scope+'/conversations/'+id+'/messages')
+   if(!valid())return
+   messages.value=result
+   const current=conversations.value.find(x=>x.id===id)
+   const runId=current?.activeRunId||''
+   if(runId){
+     if(activeRun.value!==runId||!stream.value){
+       streamText.value=''
+       subscribe(runId)
+     }
+   }else{stopStream();activeRun.value='';streamText.value=''}
+ }catch(e){if(valid())fail(e)}
+}
+function subscribe(id:string,after=0){
+ stopStream()
+ activeRun.value=id;streamState.value=after?'reconnecting':'connecting'
+ const scope=s.p,where=page.value,selected=conversation.value
+ const source=new EventSource('/api/v1'+scope+'/runs/'+id+'/events?after='+after)
+ stream.value=source
+ const valid=()=>stream.value===source&&scope===s.p&&where===page.value&&(where!=='chat'||conversation.value===selected)
+ let cursor=after
+ source.onopen=()=>{if(valid())streamState.value='connected'}
  for(const kind of ['status','delta','result','terminal'])source.addEventListener(kind,(event:MessageEvent)=>{
-   if(stream.value!==source)return;const seq=Number(event.lastEventId);if(seq<=cursor)return;cursor=seq
-   const e=JSON.parse(event.data);if(page.value==='runs')events.value.push(e)
+   if(!valid())return
+   const seq=Number(event.lastEventId)
+   if(!Number.isSafeInteger(seq)||seq<=cursor)return
+   if(seq!==cursor+1){stopStream();fail(new Error(tr('事件序列不连续，请刷新运行记录。','Event sequence gap; refresh the run history.')));return}
+   let e:Row
+   try{e=JSON.parse(event.data)}catch{stopStream();fail(new Error(tr('事件内容无效，请刷新。','Invalid event payload; refresh.')));return}
+   cursor=seq
+   if(where==='runs')events.value.push(e)
    if(kind==='delta'&&typeof e.payload?.text==='string')streamText.value+=e.payload.text
-   if(kind==='terminal'){source.close();stream.value=null;activeRun.value='';if(page.value==='chat')void refresh();else if(page.value==='runs')void s.request<Row>(scope+'/runs/'+id).then(x=>{if(s.p===scope&&page.value==='runs'&&runDetail.value?.id===id)runDetail.value=x})}
+   if(kind==='terminal'){
+     stopStream()
+     if(where==='chat'){
+       // 持久消息刷新完成后再释放当前会话的发送状态，避免显示重复的部分正文。
+       void refresh()
+     }else if(where==='runs'){
+       activeRun.value=''
+       void s.request<Row>(scope+'/runs/'+id).then(x=>{
+         if(s.p===scope&&page.value==='runs'&&runDetail.value?.id===id)runDetail.value=x
+       }).catch(error=>{if(s.p===scope&&page.value==='runs'&&runDetail.value?.id===id)fail(error)})
+     }
+   }
  })
  source.onerror=()=>{
-   if(stream.value!==source)return
+   if(!valid())return
+   streamState.value='reconnecting'
    void s.request<Row>(scope+'/runs/'+id).then(x=>{
-     if(stream.value!==source||scope!==s.p||activeRun.value!==id)return
-     if(['SUCCEEDED','FAILED','CANCELLED','INTERRUPTED'].includes(x.status)){stopStream();activeRun.value='';void refresh()}
-   }).catch(e=>{if(stream.value===source&&scope===s.p)fail(e)})
+     if(!valid()||activeRun.value!==id)return
+     // 浏览器 EventSource 自行携带 Last-Event-ID 重连，避免重新提交模型。
+     // 已终态且连接永久关闭时，聊天以持久消息为准。
+     if(where==='chat'&&source.readyState===EventSource.CLOSED&&['SUCCEEDED','FAILED','CANCELLED','INTERRUPTED'].includes(x.status)){
+       stopStream();void refresh()
+     }
+   }).catch(e=>{if(valid())fail(e)})
  }
 }
 async function send(){
  if(!chatText.value.trim()||!conversation.value||!modelId.value||!canSend.value)return
- await action(async()=>{const text=chatText.value;const r=await s.request<Row>(s.p+'/conversations/'+conversation.value+'/runs','POST',{modelId:modelId.value,text,promptVersionId:promptVersionId.value||null,variables:JSON.parse(variables.value),maxOutputTokens:null},requestKey());chatText.value='';streamText.value='';await refresh();subscribe(r.id)})
+ const scope=s.p,id=conversation.value,selection=conversationSelection,text=chatText.value
+ await action(async()=>{
+   const r=await s.request<Row>(scope+'/conversations/'+id+'/runs','POST',{modelId:modelId.value,text,promptVersionId:promptVersionId.value||null,variables:JSON.parse(variables.value),maxOutputTokens:null},requestKey())
+   if(scope!==s.p||page.value!=='chat'||conversation.value!==id||selection!==conversationSelection)return
+   chatText.value='';streamText.value=''
+   await refresh()
+   if(scope===s.p&&page.value==='chat'&&conversation.value===id&&selectedConversation.value?.activeRunId===r.id&&!stream.value)subscribe(r.id)
+ })
 }
 async function cancel(){if(activeRun.value)await mutate(s.p+'/runs/'+activeRun.value+'/cancel')}
 async function showRun(x:Row){
@@ -181,7 +237,16 @@ async function showRun(x:Row){
    runDetail.value=result;subscribe(x.id)
  }catch(e){if(valid())fail(e)}
 }
-async function retry(id:string){if(!window.confirm(tr('重试可能产生新的供应商费用。继续？','Retry may incur additional provider charges. Continue?')))return;await action(async()=>{const r=await s.request<Row>(s.p+'/runs/'+id+'/retry','POST',{acknowledgeUnknown:true},requestKey());if(page.value==='chat'){await refresh();subscribe(r.id)}else await showRun(r)})}
+async function retry(id:string){
+ if(!window.confirm(tr('重试可能产生新的供应商费用。继续？','Retry may incur additional provider charges. Continue?')))return
+ const scope=s.p,where=page.value,selected=conversation.value,selection=conversationSelection
+ await action(async()=>{
+   const r=await s.request<Row>(scope+'/runs/'+id+'/retry','POST',{acknowledgeUnknown:true},requestKey())
+   if(scope!==s.p||page.value!==where||(where==='chat'&&(conversation.value!==selected||selection!==conversationSelection)))return
+   if(where==='chat')await refresh()
+   else await showRun(r)
+ })
+}
 function onUnload(event:BeforeUnloadEvent){if(dirty.value){event.preventDefault();event.returnValue=''}}
 onMounted(async()=>{try{await s.boot();await refresh()}catch(e){if(s.user)fail(e)}finally{loading.value=false}window.addEventListener('beforeunload',onUnload);stopWatch=router.beforeEach(()=>{if(!canLeave())return false;clearPage();mobile.value=false;return true})})
 watch(page,()=>{void refresh()})
@@ -216,7 +281,7 @@ onBeforeUnmount(()=>{stopWatch();stopStream();clearMedia();window.removeEventLis
  <template v-else-if="page==='models'"><div class="panel"><div class="panel-head"><h2>{{tr('供应商连接','Provider connections')}}</h2><button class="primary" @click="startEdit('provider')">{{tr('新建连接','New connection')}}</button></div><p v-if="!providers.length" class="empty">{{tr('先配置连接与认证方式','Configure an endpoint and authentication first')}}</p><div v-for="x in providers" :key="x.id" class="list-row"><div><b>{{x.name}}</b><small>{{x.baseUrl}} · {{x.authMethod}}</small></div><span class="status">{{x.verifyStatus}}</span><button @click="startEdit('provider',x)">{{tr('编辑','Edit')}}</button><button @click="mutate(s.w+'/providers/'+x.id+'/verify')">{{tr('配置检查','Check config')}}</button><button @click="mutate(s.w+'/providers/'+x.id+'/archive',{rowVersion:x.rowVersion},'POST',true)">{{tr('归档','Archive')}}</button></div></div>
  <div class="panel"><div class="panel-head"><h2>{{tr('模型实例','Model instances')}}</h2><button class="primary" @click="startEdit('model')" :disabled="!providers.length">{{tr('新增模型','New model')}}</button></div><input v-model="query" :aria-label="tr('搜索模型','Search models')" :placeholder="tr('搜索模型','Search models')"><p v-if="!filtered.length" class="empty">{{tr('暂无模型','No models')}}</p><div class="table-wrap"><table><thead><tr><th>{{tr('名称','Name')}}</th><th>{{tr('类型 / 协议','Type / protocol')}}</th><th>{{tr('状态','State')}}</th><th>{{tr('操作','Actions')}}</th></tr></thead><tbody><tr v-for="x in filtered" :key="x.id"><td><b>{{x.name}}</b><small>{{x.externalModelId}}</small></td><td>{{x.modelType}}<small>{{x.protocolKey}} / {{x.protocolVersion}}</small></td><td><span class="status">{{x.verifyStatus}}</span></td><td class="actions"><button @click="startEdit('model',x)">{{tr('编辑','Edit')}}</button><button @click="mutate(s.p+'/model-bindings',{modelId:x.id,active:!bindings.some(b=>b.modelId===x.id&&b.status==='ACTIVE')})">{{bindings.some(b=>b.modelId===x.id&&b.status==='ACTIVE')?tr('解除绑定','Unbind'):tr('绑定项目','Bind')}}</button><button @click="startEdit('debug',x)" :disabled="!bindings.some(b=>b.modelId===x.id&&b.status==='ACTIVE')">{{tr('诊断','Diagnose')}}</button><button @click="mutate(s.p+'/model-defaults',{purpose:x.modelType==='LLM'?'CHAT':x.modelType,modelId:x.id})">{{tr('设为默认','Set default')}}</button><button @click="mutate(s.w+'/models/'+x.id+'/archive',{rowVersion:x.rowVersion},'POST',true)">{{tr('归档','Archive')}}</button></td></tr></tbody></table></div></div></template>
  <template v-else-if="page==='prompts'"><div class="panel"><div class="panel-head"><h2>{{tr('项目提示词','Project prompts')}}</h2><button class="primary" @click="startEdit('prompt')">{{tr('新建提示词','New prompt')}}</button></div><p v-if="!rows.length" class="empty">{{tr('暂无提示词','No prompts')}}</p><div v-for="x in rows" :key="x.id" class="list-row"><div><b>{{x.name}}</b><small>{{x.description}} · {{x.status}}</small></div><button @click="startEdit('prompt',x)">{{tr('编辑','Edit')}}</button><button @click="publish(x)" :disabled="x.status!=='ACTIVE'">{{tr('发布版本','Publish version')}}</button><button @click="startEdit('preview',x)">{{tr('预览草稿','Preview draft')}}</button><button @click="showVersions(x)">{{tr('历史版本','Versions')}}</button><button @click="mutate(s.p+'/prompts/'+x.id+'/'+(x.status==='ARCHIVED'?'restore':'archive'),{rowVersion:x.rowVersion},'POST',true)">{{x.status==='ARCHIVED'?tr('恢复','Restore'):tr('归档','Archive')}}</button></div></div><div v-if="selectedPrompt" class="panel"><h2>{{selectedPrompt.name}} · {{tr('版本','Versions')}}</h2><div v-for="v in versions" :key="v.id" class="version"><b>v{{v.versionNo}}</b><small>{{v.id}}</small><pre>{{v.content}}</pre><button @click="startEdit('preview',{id:selectedPrompt.id,versionId:v.id,name:selectedPrompt.name})">{{tr('预览版本','Preview version')}}</button></div></div><div class="panel"><div class="panel-head"><h2>{{tr('跨项目引用','Project references')}}</h2><button @click="startEdit('reference')">{{tr('新增引用','Add reference')}}</button></div><div v-for="x in references" :key="x.id" class="list-row"><span>{{x.alias}} · v{{x.versionNo}}</span><small>{{x.status}}</small><button @click="mutate(s.p+'/prompt-references/'+x.id+'/revoke',{rowVersion:x.rowVersion},'POST',true)">{{tr('撤销','Revoke')}}</button></div></div></template>
- <template v-else-if="page==='chat'"><div class="chat-layout"><div class="panel history"><button class="primary wide" @click="newChat">{{tr('新对话','New chat')}}</button><button v-for="c in conversations" :key="c.id" class="history-item" :class="{selected:c.id===conversation}" @click="openConversation(c.id)">{{c.title}}<small>{{c.status}}</small></button></div><div class="panel chat"><div v-if="selectedConversation" class="panel-head"><b>{{selectedConversation.title}}</b><div class="inline"><button v-if="selectedConversation.status==='ACTIVE'" :disabled="busy||!!activeRun" @click="changeConversation(selectedConversation,'archive')">{{tr('归档会话','Archive chat')}}</button><button v-if="selectedConversation.status==='ARCHIVED'" :disabled="busy" @click="changeConversation(selectedConversation,'restore')">{{tr('恢复会话','Restore chat')}}</button><button v-if="selectedConversation.status!=='REDACTED'" :disabled="busy||!!activeRun" @click="changeConversation(selectedConversation,'redact')">{{tr('清除会话','Clear chat')}}</button></div></div><p v-if="selectedConversation&&selectedConversation.status!=='ACTIVE'" class="muted">{{tr('此会话为只读。','This conversation is read-only.')}}</p><div class="inline"><select v-model="modelId" :aria-label="tr('模型','Model')"><option value="">{{tr('选择已绑定模型','Select bound model')}}</option><option v-for="x in activeBindings" :key="x.modelId" :value="x.modelId">{{x.name}} · {{x.verifyStatus}}</option></select><select v-model="promptVersionId" :aria-label="tr('提示词','Prompt')"><option value="">{{tr('不使用提示词','No prompt')}}</option><option v-for="x in rows.filter(x=>x.latestVersionId&&x.status==='ACTIVE')" :key="x.id" :value="x.latestVersionId">{{x.name}}</option><option v-for="x in references.filter(x=>x.status==='ACTIVE')" :key="x.id" :value="x.promptVersionId">{{x.alias}} v{{x.versionNo}}</option></select></div><label v-if="promptVersionId">{{tr('变量 JSON','Variables JSON')}}<textarea v-model="variables" rows="2"></textarea></label><div class="chat-body"><p v-if="!conversation" class="empty">{{tr('创建或选择会话，开始真实模型对话。','Create or select a conversation to begin.')}}</p><div v-for="m in messages" :key="m.id" class="message" :class="m.role==='USER'?'user':'assistant'"><b>{{m.role==='USER'?tr('你','You'):'AI'}} <small>{{m.status}}</small></b><pre>{{m.content}}</pre><div v-if="m.content" class="inline"><button @click="copyMessage(m.content)">{{tr('复制','Copy')}}</button><button :disabled="!canSend" @click="reuseMessage(m.content)">{{tr('复用','Reuse')}}</button></div><div v-if="m.role==='ASSISTANT'&&m.status==='COMPLETE'" class="inline"><button :aria-label="tr('有帮助','Helpful')" @click="mutate(s.p+'/conversations/'+conversation+'/messages/'+m.id+'/feedback',{rating:'UP',reason:null})">↑</button><button :aria-label="tr('无帮助','Not helpful')" @click="mutate(s.p+'/conversations/'+conversation+'/messages/'+m.id+'/feedback',{rating:'DOWN',reason:null})">↓</button></div></div><div v-if="activeRun" class="message assistant"><b>{{tr('正在生成','Generating')}}</b><pre>{{streamText}}</pre></div></div><form @submit.prevent="send"><textarea v-model="chatText" :aria-label="tr('输入消息','Enter message')" :placeholder="tr('输入消息','Enter message')" rows="4" :disabled="!canSend"></textarea><div class="panel-head"><small>{{tr('模型费用由供应商和预算决定。','Provider charges and budgets apply.')}}</small><button v-if="activeRun" type="button" @click="cancel">{{tr('停止','Stop')}}</button><button v-else class="primary" :disabled="busy||!canSend||!modelId||!chatText.trim()">{{tr('发送','Send')}}</button></div></form></div></div></template>
+ <template v-else-if="page==='chat'"><div class="chat-layout"><div class="panel history"><button class="primary wide" @click="newChat">{{tr('新对话','New chat')}}</button><button v-for="c in conversations" :key="c.id" class="history-item" :class="{selected:c.id===conversation}" @click="openConversation(c.id)">{{c.title}}<small>{{c.status}}</small></button></div><div class="panel chat"><div v-if="selectedConversation" class="panel-head"><b>{{selectedConversation.title}}</b><div class="inline"><button v-if="selectedConversation.status==='ACTIVE'" :disabled="busy||!!activeRun" @click="changeConversation(selectedConversation,'archive')">{{tr('归档会话','Archive chat')}}</button><button v-if="selectedConversation.status==='ARCHIVED'" :disabled="busy" @click="changeConversation(selectedConversation,'restore')">{{tr('恢复会话','Restore chat')}}</button><button v-if="selectedConversation.status!=='REDACTED'" :disabled="busy||!!activeRun" @click="changeConversation(selectedConversation,'redact')">{{tr('清除会话','Clear chat')}}</button></div></div><p v-if="selectedConversation&&selectedConversation.status!=='ACTIVE'" class="muted">{{tr('此会话为只读。','This conversation is read-only.')}}</p><div class="inline"><select v-model="modelId" :aria-label="tr('模型','Model')"><option value="">{{tr('选择已绑定模型','Select bound model')}}</option><option v-for="x in activeBindings" :key="x.modelId" :value="x.modelId">{{x.name}} · {{x.verifyStatus}}</option></select><select v-model="promptVersionId" :aria-label="tr('提示词','Prompt')"><option value="">{{tr('不使用提示词','No prompt')}}</option><option v-for="x in rows.filter(x=>x.latestVersionId&&x.status==='ACTIVE')" :key="x.id" :value="x.latestVersionId">{{x.name}}</option><option v-for="x in references.filter(x=>x.status==='ACTIVE')" :key="x.id" :value="x.promptVersionId">{{x.alias}} v{{x.versionNo}}</option></select></div><label v-if="promptVersionId">{{tr('变量 JSON','Variables JSON')}}<textarea v-model="variables" rows="2"></textarea></label><div class="chat-body"><p v-if="!conversation" class="empty">{{tr('创建或选择会话，开始真实模型对话。','Create or select a conversation to begin.')}}</p><div v-for="m in visibleMessages" :key="m.id" class="message" :class="m.role==='USER'?'user':'assistant'"><b>{{m.role==='USER'?tr('你','You'):'AI'}} <small>{{m.status}}</small></b><pre>{{m.content}}</pre><div v-if="m.content" class="inline"><button @click="copyMessage(m.content)">{{tr('复制','Copy')}}</button><button :disabled="!canSend" @click="reuseMessage(m.content)">{{tr('复用','Reuse')}}</button></div><div v-if="m.role==='ASSISTANT'&&m.status==='COMPLETE'" class="inline"><button :aria-label="tr('有帮助','Helpful')" @click="mutate(s.p+'/conversations/'+conversation+'/messages/'+m.id+'/feedback',{rating:'UP',reason:null})">↑</button><button :aria-label="tr('无帮助','Not helpful')" @click="mutate(s.p+'/conversations/'+conversation+'/messages/'+m.id+'/feedback',{rating:'DOWN',reason:null})">↓</button></div></div><div v-if="activeRun" class="message assistant" aria-live="polite"><b>{{streamState==='reconnecting'?tr('连接中断，正在重连','Connection lost, reconnecting'):streamState==='connecting'?tr('正在连接','Connecting'):tr('正在生成','Generating')}}</b><pre>{{streamText}}</pre></div></div><form @submit.prevent="send"><textarea v-model="chatText" :aria-label="tr('输入消息','Enter message')" :placeholder="tr('输入消息','Enter message')" rows="4" :disabled="!canSend"></textarea><div class="panel-head"><small>{{tr('模型费用由供应商和预算决定。','Provider charges and budgets apply.')}}</small><button v-if="activeRun" type="button" @click="cancel">{{tr('停止','Stop')}}</button><button v-else class="primary" :disabled="busy||!canSend||!modelId||!chatText.trim()">{{tr('发送','Send')}}</button></div></form></div></div></template>
  <template v-else-if="page==='runs'"><div class="panel"><h2>{{tr('运行历史','Run history')}}</h2><p v-if="!rows.length" class="empty">{{tr('暂无运行','No runs')}}</p><div v-for="x in rows" :key="x.id" class="list-row"><div><b>{{x.runType}} · {{x.id.slice(0,8)}}</b><small>{{localTime(x.createdAt)}}</small></div><span class="status">{{x.status}}</span><button @click="showRun(x)">{{tr('详情','Details')}}</button><button v-if="['QUEUED','RUNNING'].includes(x.status)" @click="mutate(s.p+'/runs/'+x.id+'/cancel')">{{tr('停止','Stop')}}</button><button v-if="x.runType==='CHAT'&&['FAILED','CANCELLED','INTERRUPTED','SUCCEEDED'].includes(x.status)" @click="retry(x.id)">{{tr('重试','Retry')}}</button></div></div><div v-if="runDetail" class="panel"><h2>{{tr('运行详情','Run detail')}} · {{runDetail.status}}</h2><small>{{runDetail.traceId}}</small><div v-for="e in events" :key="e.seq" class="event"><small>{{e.seq}} · {{e.eventType}}</small><pre>{{JSON.stringify(e.payload,null,2)}}</pre><button v-if="e.payload?.artifactId" @click="showMedia(e.payload.artifactId)">{{tr('预览产物','Preview artifact')}}</button><a v-if="e.payload?.artifactId" :href="'/api/v1'+s.p+'/runs/'+runDetail.id+'/artifacts/'+e.payload.artifactId" download>{{tr('下载产物','Download artifact')}}</a></div><div v-if="mediaUrl" class="panel"><img v-if="mediaType==='image/png'" :src="mediaUrl" :alt="tr('生成图片','Generated image')" style="max-width:100%"><audio v-else :src="mediaUrl" controls></audio><button @click="clearMedia">{{tr('关闭预览','Close preview')}}</button></div></div></template>
  <template v-else-if="page==='usage'"><UsageOverview :scope="s.p" :revision="usageRevision" :locale="s.locale"/><div class="panel"><h2>{{tr('三级预算','Budget policies')}}</h2><div v-for="b in budgets" :key="b.id" class="list-row"><div><b>{{b.scopeType}}</b><small>{{tr('并发','Concurrency')}} {{b.inflightCount}} / {{b.maxConcurrency}} · {{tr('周期','Period')}} {{b.periodType}}</small></div><span>{{b.maxCost??tr('无金额限制','No cost cap')}} {{b.currency}}</span><button @click="startEdit('budget',b)">{{tr('编辑预算','Edit budget')}}</button></div></div><div class="panel"><h2>{{tr('近 30 天调用记录','Last 30 days of calls')}}</h2><p class="muted">{{tr('未知费用显示未知，不作为零处理。','Unknown costs remain unknown, not zero.')}}</p><div class="table-wrap"><table><thead><tr><th>{{tr('时间','Time')}}</th><th>{{tr('模型','Model')}}</th><th>Token</th><th>{{tr('费用','Cost')}}</th><th>{{tr('状态','Status')}}</th></tr></thead><tbody><tr v-for="x in calls" :key="x.id"><td>{{localTime(x.createdAt)}}</td><td>{{x.modelType}}</td><td>{{x.totalTokens??tr('未知','Unknown')}}<small>{{x.usageSource}}</small></td><td>{{x.costAmount??tr('未知','Unknown')}} {{x.costCurrency}}<small>{{x.costSource}}</small></td><td>{{x.status}}</td></tr></tbody></table></div></div></template>
  <template v-else-if="page==='plugins'"><div class="panel"><div class="panel-head"><h2>{{tr('私有插件声明','Private plugin manifests')}}</h2><button class="primary" @click="startEdit('plugin')">{{tr('新增声明','New manifest')}}</button></div><p class="muted">{{tr('P1 只支持声明、Schema 校验与版本登记，不安装或运行插件。','P1 validates and registers manifests only; no plugin installation or execution.')}}</p><div v-for="x in rows" :key="x.id" class="list-row"><div><b>{{x.name}}</b><small>{{x.pluginKey}} · {{x.pluginVersion}}</small></div><span class="status">{{x.status}}</span><button v-if="x.status==='DRAFT'" @click="mutate(s.w+'/plugin-manifests/'+x.id+'/declare',{rowVersion:x.rowVersion})">{{tr('声明','Declare')}}</button><button @click="mutate(s.w+'/plugin-manifests/'+x.id+'/archive',{rowVersion:x.rowVersion},'POST',true)">{{tr('归档','Archive')}}</button></div></div></template>

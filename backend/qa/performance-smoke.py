@@ -318,9 +318,10 @@ def submit(scope, client):
     start = time.monotonic()
     run = client.call("POST", path, payload, key=marker)
     created = (time.monotonic() - start) * 1000
+    first, reconnects = client.events(scope["path"], run["id"])
+    # Verify the idempotency key after streaming so the extra HTTP request is not included in TTFT.
     duplicate = client.call("POST", path, payload, key=marker)
     assert duplicate["id"] == run["id"], "Duplicate run"
-    first, reconnects = client.events(scope["path"], run["id"])
     detail = client.call("GET", scope["path"] + "/runs/" + run["id"])
     assert detail["status"] == "SUCCEEDED", detail
     with LOCK:

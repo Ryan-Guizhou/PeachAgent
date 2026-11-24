@@ -262,7 +262,6 @@ public class BudgetService {
             args.add(cursor.time());
         }
         args.add(Math.max(1,Math.min(100,limit)));
-        return jdbc.queryForList(sql+" ORDER BY CREATED_AT DESC,ID DESC LIMIT ?",args.toArray())
-                .stream().map(x->JsonData.view(mapper,x)).toList();
+        return JsonData.viewRows(mapper,jdbc.queryForList(sql+" ORDER BY CREATED_AT DESC,ID DESC LIMIT ?",args.toArray()));
     }
 }
