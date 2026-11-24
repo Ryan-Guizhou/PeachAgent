@@ -49,9 +49,11 @@ jobs:
           REDIS_PASSWORD: ci-only-redis
           COOKIE_SECURE: 'false'
           PEACHAGENT_ALLOWED_INTERNAL_ORIGINS: http://127.0.0.1:18081
-          CREDENTIAL_KEK: 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY='
         run: |
           set -euo pipefail
+          # Generate a fresh test-only KEK; API and Worker inherit it in this job.
+          export CREDENTIAL_KEK="$(openssl rand -base64 32)"
+          echo "::add-mask::$CREDENTIAL_KEK"
           JAR=backend/peachagent-bootstrap/target/peachagent-bootstrap-1.0.0-SNAPSHOT.jar
           java -jar "$JAR" --spring.profiles.active=api --spring.web.resources.static-locations="file:$(pwd)/frontend/dist/" > api.log 2>&1 &
           API=$!
