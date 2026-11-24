@@ -1,0 +1,6 @@
+spring:
+  main:
+    web-application-type: none
+    keep-alive: false
+  flyway:
+    enabled: true
