@@ -19,7 +19,11 @@
   const defaults={version:1,active:DEFAULT_ID,spaces:[{id:DEFAULT_ID,name:id==='demo'?'演示空间':'我的工作空间',createdAt:0}]};
   let stored=null;
   try{stored=safeParse(localStorage.getItem(key(id)))}catch(_){}
-  if(!stored||stored.version!==1||!Array.isArray(stored.spaces))return defaults;
+  if(!stored||stored.version!==1||!Array.isArray(stored.spaces)){
+   // Preserve the name saved before the workspace registry was introduced.
+   try{const legacy=safeParse(localStorage.getItem(storageKey(id,DEFAULT_ID)));const name=legacy?.spaceName||legacy?.gov?.preferences?.name;if(typeof name==='string'&&name.trim()&&name.trim().length<=42)defaults.spaces[0].name=name.trim();}catch(_){}
+   return defaults;
+  }
   const spaces=stored.spaces.filter(s=>s&&s.id===DEFAULT_ID||s&&/^space-[a-f0-9]{24}$/.test(s.id)).filter(s=>typeof s.name==='string'&&s.name.length>0&&s.name.length<=42).slice(0,MAX_SPACES).map(s=>({id:s.id,name:s.name,createdAt:Number(s.createdAt)||0}));
   if(!spaces.some(s=>s.id===DEFAULT_ID))spaces.unshift(defaults.spaces[0]);
   return {version:1,active:spaces.some(s=>s.id===stored.active)?stored.active:DEFAULT_ID,spaces};
@@ -61,7 +65,12 @@
   if(!target)throw new Error('工作空间不存在');
   target.name=validateName(name);
   write(id,state);
-  if(spaceId===state.active&&window.Studio){window.Studio.state.spaceName=target.name;window.Studio.save();window.Studio.renderChrome();}
+  if(spaceId===state.active&&window.Studio){
+   const studio=window.Studio;
+   studio.state.spaceName=target.name;
+   if(studio.state.gov?.preferences)studio.state.gov.preferences.name=target.name;
+   studio.renderChrome?.();
+  }
   return target;
  }
  function switchTo(spaceId){
@@ -73,14 +82,9 @@
   if(studio?.dirty)throw new Error('请先保存或放弃当前编辑，再切换工作空间');
   // Keep the previous account/space captured in core.js until the reload.
   if(studio&&studio.save()===false)throw new Error('无法保存当前工作空间，请先导出备份');
-  try{
-   studio?.Planning?.stopAll?.('space-switch');
-   (studio?.state?.runs||[]).filter(r=>['running','waiting','queued'].includes(r.status)).forEach(r=>{r.status='stopped';r.stopReason='切换空间时停止本地任务';});
-   studio?.save?.();
-   studio?.Publishing?.clearSession?.();
-   studio?.Models?.clearSession?.();
-  }catch(_){}
-  state.active=spaceId;write(id,state);
+  if(studio&&window.StudioAuth.stopWorkspace('space-switch')===false)throw new Error('本地任务已停止，但保存未完成；仍在原空间，请导出备份后重试。');
+  state.active=spaceId;
+  try{write(id,state);}catch(error){throw new Error('本地任务已停止，但空间切换未保存；仍在原空间，请检查浏览器存储后重试。',{cause:error});}
   location.reload();
   return true;
  }
@@ -88,7 +92,7 @@
   const show=()=>{
    const current=active();if(!current)return;
    const esc=S.escape;
-   const rows=list().map(s=>'<div class="space-choice'+(s.active?' active':'')+'"><button type="button" class="space-info" data-action="space-open" data-id="'+esc(s.id)+'" '+(s.active?'disabled':'')+'><strong>'+esc(s.name)+'</strong><small>'+(s.active?'当前空间':s.id===DEFAULT_ID?'默认空间':'独立空间')+'</small></button><button type="button" class="btn btn-ghost btn-sm" data-action="space-rename" data-id="'+esc(s.id)+'">重命名</button></div>').join('');
+   const rows=list().map(s=>'<div class="space-choice'+(s.active?' active':'')+'"><button type="button" class="space-info" data-action="space-open" data-id="'+esc(s.id)+'" '+(s.active?'disabled':'')+'><strong data-no-i18n>'+esc(s.name)+'</strong><small>'+(s.active?'当前空间':s.id===DEFAULT_ID?'默认空间':'独立空间')+'</small></button><button type="button" class="btn btn-ghost btn-sm" data-action="space-rename" data-id="'+esc(s.id)+'">重命名</button></div>').join('');
    S.modal({title:'切换工作空间',subtitle:'每个空间的智能体、模型、任务与评测数据独立保存在当前浏览器。',body:'<div class="space-list">'+rows+'</div><p class="small muted" style="margin-top:16px">本地原型不包含云端同步、协作成员或真正的多租户授权。</p>',footer:S.btn('关闭','modal-close',{variant:'secondary'})+S.btn('创建空间','space-create',{icon:'plus'})});
    window.StudioAppearance?.localize(document.getElementById('app-dialog'));
   };

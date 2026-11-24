@@ -65,7 +65,7 @@
   const workspaceKey=window.StudioAuth?.workspaceStorageKey()||'otryx-studio-demo';
   try {const saved=JSON.parse(localStorage.getItem(workspaceKey)||'null');S.state=saved&&saved.schema===1?Object.assign(seed(),saved):seed();}catch(_){S.state=seed();}
   const activeSpace=window.StudioSpaces?.active();
-  if(activeSpace&&(activeSpace.id!=='default'||!S.state.spaceName))S.state.spaceName=activeSpace.name;
+  if(activeSpace)S.state.spaceName=activeSpace.name;
   S.state.agents.forEach(agent=>{if(agent.status==='published'&&!agent.publishedConfig){agent.publishedConfig=JSON.parse(JSON.stringify(agent));agent.publishedPrompt=agent.prompt;}});
   S.agentRuntime=agent=>agent?JSON.parse(JSON.stringify({... (agent.publishedConfig||agent),id:agent.id,icon:agent.icon,color:agent.color})):null;
   // Secret-bearing configuration has a defined owner. User JSON (datasets, inputs,

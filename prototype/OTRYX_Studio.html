@@ -469,10 +469,10 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   '空间设置':'Space Settings','我的空间':'My Space','个人工作空间':'Personal Workspace','我的工作空间':'My Workspace',
   '本地原型':'Local Prototype','本地交互原型':'Interactive Prototype','搜索工作空间':'Search Workspace',
   '本月用量':'Monthly Usage','我的账户':'My Account','我的账户与退出':'Account & Sign Out',
-  '我的账户与退出登录':'Account & Sign Out','管理员演示':'Admin Demo','空间所有者':'Workspace Owner',
+  '我的账户与退出登录':'Account & Sign Out of Workspace','管理员演示':'Admin Demo','空间所有者':'Workspace Owner',
   '空间类型':'Workspace Type','个人空间':'Personal Space','关闭':'Close','返回':'Back','创建':'Create',
   '保存':'Save','取消':'Cancel','编辑':'Edit','删除':'Delete','确定':'Confirm','新增':'New',
-  '登录':'Sign in','注册':'Sign up','登录工作空间':'Sign in to your workspace','创建本地账户':'Create local account',
+  '登录':'Sign in','注册':'Sign up','登录工作空间':'Sign in to your workspace',
   '忘记密码':'Forgot password','重置密码':'Reset password','重置本地密码':'Reset local password',
   '登录状态已失效':'Session expired','欢迎回来':'Welcome back','创建你的工作空间':'Create your workspace',
   '你的称呼':'Your name','邮箱':'Email','密码':'Password','设置密码':'Set password','确认密码':'Confirm password',
@@ -481,7 +481,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   '进入演示空间':'Enter demo workspace','创建本地账户':'Create local account','返回登录':'Back to sign in',
   '忘记密码？':'Forgot password?','先了解产品':'Explore the platform',
   '重新登录':'Sign in again','退出登录':'Sign out','会话状态':'Session status',
-  '登录已失效':'Session expired','找回访问方式':'Recover access','继续本地重置':'Continue reset',
+  '登录已失效':'Login expired','找回访问方式':'Recover access','继续本地重置':'Continue reset',
   '更新本地密码':'Update local password','重新生成演示码':'Regenerate demo code',
   '切换主题':'Change theme','语言':'Language','主题':'Theme',
   '从一个想法，':'From one idea,','到可运行的应用。':'to a working application.',
@@ -523,7 +523,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
    const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
    const nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);
    nodes.forEach(node=>{
-    if(node.parentElement?.closest('script,style,textarea,pre,code,kbd,[contenteditable],.mono,.code-editor,.auth-credential-demo'))return;
+    if(node.parentElement?.closest('script,style,textarea,pre,code,kbd,[contenteditable],[data-no-i18n],[data-chrome="space-name"],[data-chrome="account-name"],[data-chrome="space-initial"],[data-chrome="initials"],.mono,.code-editor,.auth-credential-demo'))return;
     const raw=node.nodeValue,trimmed=raw.trim();
     if(labels[trimmed])node.nodeValue=raw.replace(trimmed,labels[trimmed]);
    });
@@ -535,7 +535,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
    const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
    const nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);
    nodes.forEach(node=>{
-    if(node.parentElement?.closest('script,style,textarea,pre,code,kbd,[contenteditable],.mono,.code-editor,.auth-credential-demo'))return;
+    if(node.parentElement?.closest('script,style,textarea,pre,code,kbd,[contenteditable],[data-no-i18n],[data-chrome="space-name"],[data-chrome="account-name"],[data-chrome="space-initial"],[data-chrome="initials"],.mono,.code-editor,.auth-credential-demo'))return;
     const raw=node.nodeValue,trimmed=raw.trim();if(inverse[trimmed])node.nodeValue=raw.replace(trimmed,inverse[trimmed]);
    });
   }
@@ -547,8 +547,22 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content',getComputedStyle(document.documentElement).getPropertyValue('--bg-app').trim());
   persist();updateChrome();return true;
  }
+ function hasUncommittedInput(){
+  if(studio?.dirty||document.getElementById?.('app-dialog')?.open)return true;
+  return Array.from(document.querySelectorAll('#page-content form input, #page-content form textarea, #page-content form select')).some(el=>{
+   if(el.disabled||['hidden','button','submit'].includes(el.type))return false;
+   if(el.type==='checkbox'||el.type==='radio')return el.checked!==el.defaultChecked;
+   if(el.tagName==='SELECT'){
+    const options=Array.from(el.options),hasDefault=options.some(item=>item.defaultSelected);
+    return options.some((option,index)=>option.selected!==(option.defaultSelected||(!hasDefault&&!el.multiple&&index===0)));
+   }
+   return el.value!==el.defaultValue;
+  });
+ }
  function setLocale(next){
   if(!['zh-CN','en-US'].includes(next))return false;
+  if(next===locale)return true;
+  if(hasUncommittedInput()){studio?.toast(locale==='zh-CN'?'请先保存或放弃当前编辑，关闭弹窗后再切换语言。':'Save or discard your edits and close the dialog before changing language.','warning');return false;}
   locale=next;document.documentElement.lang=next;persist();
   if(studio){studio.closeModal?.();studio.render();} else location.reload();
   updateChrome();return true;
@@ -602,7 +616,11 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   const defaults={version:1,active:DEFAULT_ID,spaces:[{id:DEFAULT_ID,name:id==='demo'?'演示空间':'我的工作空间',createdAt:0}]};
   let stored=null;
   try{stored=safeParse(localStorage.getItem(key(id)))}catch(_){}
-  if(!stored||stored.version!==1||!Array.isArray(stored.spaces))return defaults;
+  if(!stored||stored.version!==1||!Array.isArray(stored.spaces)){
+   // Preserve the name saved before the workspace registry was introduced.
+   try{const legacy=safeParse(localStorage.getItem(storageKey(id,DEFAULT_ID)));const name=legacy?.spaceName||legacy?.gov?.preferences?.name;if(typeof name==='string'&&name.trim()&&name.trim().length<=42)defaults.spaces[0].name=name.trim();}catch(_){}
+   return defaults;
+  }
   const spaces=stored.spaces.filter(s=>s&&s.id===DEFAULT_ID||s&&/^space-[a-f0-9]{24}$/.test(s.id)).filter(s=>typeof s.name==='string'&&s.name.length>0&&s.name.length<=42).slice(0,MAX_SPACES).map(s=>({id:s.id,name:s.name,createdAt:Number(s.createdAt)||0}));
   if(!spaces.some(s=>s.id===DEFAULT_ID))spaces.unshift(defaults.spaces[0]);
   return {version:1,active:spaces.some(s=>s.id===stored.active)?stored.active:DEFAULT_ID,spaces};
@@ -644,7 +662,12 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   if(!target)throw new Error('工作空间不存在');
   target.name=validateName(name);
   write(id,state);
-  if(spaceId===state.active&&window.Studio){window.Studio.state.spaceName=target.name;window.Studio.save();window.Studio.renderChrome();}
+  if(spaceId===state.active&&window.Studio){
+   const studio=window.Studio;
+   studio.state.spaceName=target.name;
+   if(studio.state.gov?.preferences)studio.state.gov.preferences.name=target.name;
+   studio.renderChrome?.();
+  }
   return target;
  }
  function switchTo(spaceId){
@@ -656,14 +679,9 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   if(studio?.dirty)throw new Error('请先保存或放弃当前编辑，再切换工作空间');
   // Keep the previous account/space captured in core.js until the reload.
   if(studio&&studio.save()===false)throw new Error('无法保存当前工作空间，请先导出备份');
-  try{
-   studio?.Planning?.stopAll?.('space-switch');
-   (studio?.state?.runs||[]).filter(r=>['running','waiting','queued'].includes(r.status)).forEach(r=>{r.status='stopped';r.stopReason='切换空间时停止本地任务';});
-   studio?.save?.();
-   studio?.Publishing?.clearSession?.();
-   studio?.Models?.clearSession?.();
-  }catch(_){}
-  state.active=spaceId;write(id,state);
+  if(studio&&window.StudioAuth.stopWorkspace('space-switch')===false)throw new Error('本地任务已停止，但保存未完成；仍在原空间，请导出备份后重试。');
+  state.active=spaceId;
+  try{write(id,state);}catch(error){throw new Error('本地任务已停止，但空间切换未保存；仍在原空间，请检查浏览器存储后重试。',{cause:error});}
   location.reload();
   return true;
  }
@@ -671,7 +689,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   const show=()=>{
    const current=active();if(!current)return;
    const esc=S.escape;
-   const rows=list().map(s=>'<div class="space-choice'+(s.active?' active':'')+'"><button type="button" class="space-info" data-action="space-open" data-id="'+esc(s.id)+'" '+(s.active?'disabled':'')+'><strong>'+esc(s.name)+'</strong><small>'+(s.active?'当前空间':s.id===DEFAULT_ID?'默认空间':'独立空间')+'</small></button><button type="button" class="btn btn-ghost btn-sm" data-action="space-rename" data-id="'+esc(s.id)+'">重命名</button></div>').join('');
+   const rows=list().map(s=>'<div class="space-choice'+(s.active?' active':'')+'"><button type="button" class="space-info" data-action="space-open" data-id="'+esc(s.id)+'" '+(s.active?'disabled':'')+'><strong data-no-i18n>'+esc(s.name)+'</strong><small>'+(s.active?'当前空间':s.id===DEFAULT_ID?'默认空间':'独立空间')+'</small></button><button type="button" class="btn btn-ghost btn-sm" data-action="space-rename" data-id="'+esc(s.id)+'">重命名</button></div>').join('');
    S.modal({title:'切换工作空间',subtitle:'每个空间的智能体、模型、任务与评测数据独立保存在当前浏览器。',body:'<div class="space-list">'+rows+'</div><p class="small muted" style="margin-top:16px">本地原型不包含云端同步、协作成员或真正的多租户授权。</p>',footer:S.btn('关闭','modal-close',{variant:'secondary'})+S.btn('创建空间','space-create',{icon:'plus'})});
    window.StudioAppearance?.localize(document.getElementById('app-dialog'));
   };
@@ -916,24 +934,25 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   function returnDestination() { return safeReturnHash(read(RETURN_KEY, 'session') || '#home'); }
   const isAuthRoute = route => AUTH_ROUTES.has(String(route || '').replace(/^#/, '').split('?')[0]);
 
-  function stopWorkspace() {
-    if (!studio || workspaceStopping) return;
+  function stopWorkspace(reason = 'session-ended') {
+    if (!studio || workspaceStopping) return false;
     workspaceStopping = true;
     try {
-      try { studio.Planning?.stopAll?.('session-ended'); } catch (_) { /* Individual runs are stopped below as well. */ }
+      try { studio.Planning?.stopAll?.(reason); } catch (error) { if (reason === 'space-switch') throw error; /* Individual runs are stopped below as well. */ }
       for (const experiment of studio.state.qualityData?.experiments || []) {
         if (experiment.status === 'running') studio.Quality?.stopExperiment(experiment.id);
       }
       for (const run of studio.state.runs || []) {
         if (!['running', 'waiting', 'queued', 'pending'].includes(run.status)) continue;
         // Historical demo rows predate Runtime and do not contain its tool-call array.
-        if (run.engine === 'graph' && Array.isArray(run.toolCalls) && studio.Runtime?.stop) studio.Runtime.stop(run.id);
+        if (Array.isArray(run.toolCalls) && studio.Runtime?.stop) studio.Runtime.stop(run.id);
         else {
           run.status = 'stopped';
           run.finishedAt = Date.now();
           run.duration = run.finishedAt - (run.created || run.finishedAt);
           run.pending = null;
-          run.stopReason = '登录会话结束，已停止本地执行。';
+          run.pendingQueue = [];
+          run.stopReason = reason === 'space-switch' ? '切换空间，已停止本地执行。' : '登录会话结束，已停止本地执行。';
         }
       }
       studio.Publishing?.clearSession();
@@ -942,7 +961,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
       studio.timers?.clear();
       studio.closeModal?.();
       studio.session = {};
-      studio.save?.();
+      return studio.save?.() !== false;
     } finally { workspaceStopping = false; }
   }
 
@@ -1277,7 +1296,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   const api = window.StudioAuth = {
     attach, dispose, getSession, workspaceStorageKey, guard, isAuthRoute, safeReturnHash,
     createAccount, signIn, enterDemo, beginReset, resetChallenge, resetPassword,
-    logout, expire, openAccount, resume,
+    logout, expire, openAccount, resume, stopWorkspace,
     constants: Object.freeze({ ACCOUNT_KEY, SESSION_KEY, REMEMBER_KEY, RETURN_KEY, LEGACY_WORKSPACE, SESSION_TTL, REMEMBER_TTL, RESET_TTL })
   };
 })();
@@ -1352,7 +1371,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   const workspaceKey=window.StudioAuth?.workspaceStorageKey()||'otryx-studio-demo';
   try {const saved=JSON.parse(localStorage.getItem(workspaceKey)||'null');S.state=saved&&saved.schema===1?Object.assign(seed(),saved):seed();}catch(_){S.state=seed();}
   const activeSpace=window.StudioSpaces?.active();
-  if(activeSpace&&(activeSpace.id!=='default'||!S.state.spaceName))S.state.spaceName=activeSpace.name;
+  if(activeSpace)S.state.spaceName=activeSpace.name;
   S.state.agents.forEach(agent=>{if(agent.status==='published'&&!agent.publishedConfig){agent.publishedConfig=JSON.parse(JSON.stringify(agent));agent.publishedPrompt=agent.prompt;}});
   S.agentRuntime=agent=>agent?JSON.parse(JSON.stringify({... (agent.publishedConfig||agent),id:agent.id,icon:agent.icon,color:agent.color})):null;
   // Secret-bearing configuration has a defined owner. User JSON (datasets, inputs,
@@ -2616,7 +2635,7 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   }
   S.page('market', {
     title: '资源市场', section: '资源',
-    render() { return `<div class="eco-page">${S.header('模板与扩展', '资源市场', '查找可复用模板。安装后进入对应管理页，连接授权始终由你配置。', S.btn('我的提交', 'eco-open-reviews', { icon: 'clock', variant: 'ghost' }) + S.btn('分享模板', 'eco-publish-choose', { icon: 'upload', variant: 'secondary' }))}<div class="eco-market-controls">${filterButtons([{ id: 'all', label: '全部' }, ...['agent', 'workflow', 'skill', 'mcp', 'prompt'].map(id => ({ id, label: meta(id).label }))], ui.marketType, 'eco-market-tab')}${S.search('eco-market-search', '搜索名称、用途或作者', ui.marketQuery)}</div><div id="eco-market-results">${marketResults()}</div><p class="eco-ownership-note">知识正文在 <a href="#knowledge">知识库</a> 维护；模板在 <a href="#library">提示词与 Skills</a> 维护；MCP 与插件实例统一在 <a href="#capabilities">工具与连接</a> 配置。</p></div>`; },
+    render() { return `<div class="eco-page">${S.header('模板与扩展', '资源市场', '查找可复用模板。安装后进入对应管理页，连接授权始终由你配置。', S.btn('我的提交', 'eco-open-reviews', { icon: 'clock', variant: 'ghost' }) + S.btn('分享模板', 'eco-publish-choose', { icon: 'upload', variant: 'secondary' }))}<div class="eco-market-controls">${filterButtons([{ id: 'all', label: '全部' }, ...['agent', 'workflow', 'skill', 'mcp', 'plugin', 'prompt'].map(id => ({ id, label: meta(id).label }))], ui.marketType, 'eco-market-tab')}${S.search('eco-market-search', '搜索名称、用途或作者', ui.marketQuery)}</div><div id="eco-market-results">${marketResults()}</div><p class="eco-ownership-note">知识正文在 <a href="#knowledge">知识库</a> 维护；模板在 <a href="#library">提示词与 Skills</a> 维护；MCP 与插件实例统一在 <a href="#capabilities">工具与连接</a> 配置。</p></div>`; },
     mount(container) { searchMount(container, 'eco-market-search', q => { ui.marketQuery = q; ui.marketLimit = 9; container.querySelector('#eco-market-results').innerHTML = marketResults(); const input = container.querySelector('#eco-market-search'); const clear = input?.parentElement?.querySelector('.search-clear'); if (clear) clear.hidden = !q; }); }
   });
   S.action('eco-open-reviews', () => S.go('review'));
@@ -2805,9 +2824,9 @@ pre,dialog pre,.code-editor{background:var(--code-bg);color:var(--code-fg);borde
   S.action('gov-model-toggle',el=>S.go('model-detail',{id:el.dataset.id}));
   function renderPreferences() {
     const p = gov.preferences;
-    return `<section class="panel gov-preferences"><div class="gov-panel-head"><div><h2 class="section-title">个人空间</h2><p class="small muted">这里的偏好保存在当前浏览器</p></div><span class="gov-icon-tile">${S.icon('users', 20)}</span></div><form id="gov-preferences-form" data-form="gov-preferences-form" novalidate>${S.field('空间名称', { id: 'gov-space-name', name: 'spaceName', value: p.name, required: true })}<div class="field"><label class="field-label" for="gov-default-model">偏好模型</label><select class="select" id="gov-default-model" name="defaultModel">${S.Models?.selectionOptions?S.Models.selectionOptions('llm',p.defaultModel):(S.Models?S.Models.list({type:'llm',enabled:true}):S.state.models).map(m => `<option value="${E(m.id)}" ${m.id === p.defaultModel || m.name === p.defaultModel ? 'selected' : ''}>${E(m.name)}</option>`).join('')}</select><p class="field-help">用于工作台的新任务；已有 Agent 仍使用各自的模型配置。</p></div><div class="gov-preference-row"><div><strong>在工作台突出待确认任务</strong><p class="small muted">工作台优先展示待确认任务；审批流程按各自任务配置执行。</p></div><input type="checkbox" name="approval" ${p.approval ? 'checked' : ''} aria-label="突出待确认任务"/></div><div class="gov-preference-row"><div><strong>显示用量摘要</strong><p class="small muted">在工作台和侧栏显示当前用量摘要。</p></div><input type="checkbox" name="digest" ${p.digest ? 'checked' : ''} aria-label="保存用量摘要偏好"/></div><div class="gov-preference-footer"><span class="small muted">语言：简体中文 · 时区：Asia/Shanghai</span><div class="row">${S.btn('重置演示', 'reset-demo', { variant: 'ghost' })}${S.btn('保存偏好', 'gov-preferences-save', { variant: 'primary' })}</div></div></form></section>`;
+    return `<section class="panel gov-preferences"><div class="gov-panel-head"><div><h2 class="section-title">个人空间</h2><p class="small muted">这里的偏好保存在当前浏览器</p></div><span class="gov-icon-tile">${S.icon('users', 20)}</span></div><form id="gov-preferences-form" data-form="gov-preferences-form" novalidate>${S.field('空间名称', { id: 'gov-space-name', name: 'spaceName', value: window.StudioSpaces?.active()?.name || S.state.spaceName || p.name, required: true })}<div class="field"><label class="field-label" for="gov-default-model">偏好模型</label><select class="select" id="gov-default-model" name="defaultModel">${S.Models?.selectionOptions?S.Models.selectionOptions('llm',p.defaultModel):(S.Models?S.Models.list({type:'llm',enabled:true}):S.state.models).map(m => `<option value="${E(m.id)}" ${m.id === p.defaultModel || m.name === p.defaultModel ? 'selected' : ''}>${E(m.name)}</option>`).join('')}</select><p class="field-help">用于工作台的新任务；已有 Agent 仍使用各自的模型配置。</p></div><div class="gov-preference-row"><div><strong>在工作台突出待确认任务</strong><p class="small muted">工作台优先展示待确认任务；审批流程按各自任务配置执行。</p></div><input type="checkbox" name="approval" ${p.approval ? 'checked' : ''} aria-label="突出待确认任务"/></div><div class="gov-preference-row"><div><strong>显示用量摘要</strong><p class="small muted">在工作台和侧栏显示当前用量摘要。</p></div><input type="checkbox" name="digest" ${p.digest ? 'checked' : ''} aria-label="保存用量摘要偏好"/></div><div class="gov-preference-footer"><span class="small muted">语言：${window.StudioAppearance?.getLocale()==='en-US'?'English':'简体中文'} · 时区：Asia/Shanghai</span><div class="row">${S.btn('重置演示', 'reset-demo', { variant: 'ghost' })}${S.btn('保存偏好', 'gov-preferences-save', { variant: 'primary' })}</div></div></form></section>`;
   }
-  S.action('gov-preferences-save', () => { const form = document.getElementById('gov-preferences-form'); if (!S.validate(form, { spaceName: v => v.trim() ? null : '请输入空间名称' })) return; if(S.Models)S.Models.resolve(form.elements.defaultModel.value,{type:'llm'}); gov.preferences = { name: form.elements.spaceName.value.trim(), defaultModel: form.elements.defaultModel.value, approval: form.elements.approval.checked, digest: form.elements.digest.checked }; S.state.spaceName = gov.preferences.name; S.save(); S.session.model = gov.preferences.defaultModel; if(S.renderChrome)S.renderChrome(); S.toast('个人空间偏好已保存'); });
+  S.action('gov-preferences-save', () => { const form = document.getElementById('gov-preferences-form'); if (!S.validate(form, { spaceName: v => v.trim()&&v.trim().length<=42 ? null : '空间名称须为 1–42 个字符' })) return; if(S.Models)S.Models.resolve(form.elements.defaultModel.value,{type:'llm'}); const active=window.StudioSpaces?.active(); if(active&&active.name!==form.elements.spaceName.value.trim())window.StudioSpaces.rename(active.id,form.elements.spaceName.value); gov.preferences = { name: active?window.StudioSpaces.active().name:form.elements.spaceName.value.trim(), defaultModel: form.elements.defaultModel.value, approval: form.elements.approval.checked, digest: form.elements.digest.checked }; S.state.spaceName = gov.preferences.name; if(S.save()===false){S.toast('空间偏好尚未持久保存，请检查浏览器存储。','warning');return;} S.session.model = gov.preferences.defaultModel; if(S.renderChrome)S.renderChrome(); S.toast('个人空间偏好已保存'); });
   function composeDraft() {
     return `# OTRYX Studio — 部署配置草案\n# 此原型没有对应的可拉取 OTRYX 镜像。请先实现后端、构建并填写你自己的镜像。\n# 未完成 .env 配置与安全审查前，不可直接用于生产。\nname: ${draftDeploy.project}\nservices:\n  studio:\n    image: \${OTRYX_STUDIO_IMAGE:?请填写自行构建的前端镜像}\n    ports:\n      - "127.0.0.1:${draftDeploy.port}:80"\n    depends_on:\n      - api\n  api:\n    image: \${OTRYX_API_IMAGE:?请填写自行实现的 API 镜像}\n    environment:\n      DATABASE_URL: \${DATABASE_URL:?请填写数据库连接}\n      REDIS_URL: redis://redis:6379\n      ENCRYPTION_KEY: \${ENCRYPTION_KEY:?请设置服务端加密密钥}\n    depends_on:\n      - postgres\n      - redis\n  runtime:\n    image: \${OTRYX_RUNTIME_IMAGE:?请填写自行实现的任务运行时镜像}\n    environment:\n      DATABASE_URL: \${DATABASE_URL:?请填写数据库连接}\n      REDIS_URL: redis://redis:6379\n    depends_on:\n      - api\n  postgres:\n    image: \${POSTGRES_IMAGE:?请填写已审查的 PostgreSQL 镜像}\n    environment:\n      POSTGRES_DB: otryx\n      POSTGRES_USER: otryx\n      POSTGRES_PASSWORD: \${POSTGRES_PASSWORD:?请设置数据库密码}\n    volumes:\n      - postgres_data:/var/lib/postgresql/data\n  redis:\n    image: \${REDIS_IMAGE:?请填写已审查的 Redis 镜像}\n    volumes:\n      - redis_data:/data\nvolumes:\n  postgres_data:\n  redis_data:\n`;
   }

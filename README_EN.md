@@ -3,7 +3,9 @@
 [简体中文](README.md) | [English](README_EN.md)
 
 <!-- doc-section:overview -->
-## An Agent platform for complete tasks
+## Agent development platform for complete tasks
+
+PeachAgent is the platform name; OTRYX Studio is the current console prototype name.
 
 PeachAgent connects Agent and workflow design, controlled execution, knowledge retrieval, evaluation, reusable resources, and application publishing for individual developers. Each user has an independent tenant with multiple workspaces and projects, and configures their own model and tool credentials.
 

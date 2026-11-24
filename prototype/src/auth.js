@@ -208,24 +208,25 @@
   function returnDestination() { return safeReturnHash(read(RETURN_KEY, 'session') || '#home'); }
   const isAuthRoute = route => AUTH_ROUTES.has(String(route || '').replace(/^#/, '').split('?')[0]);
 
-  function stopWorkspace() {
-    if (!studio || workspaceStopping) return;
+  function stopWorkspace(reason = 'session-ended') {
+    if (!studio || workspaceStopping) return false;
     workspaceStopping = true;
     try {
-      try { studio.Planning?.stopAll?.('session-ended'); } catch (_) { /* Individual runs are stopped below as well. */ }
+      try { studio.Planning?.stopAll?.(reason); } catch (error) { if (reason === 'space-switch') throw error; /* Individual runs are stopped below as well. */ }
       for (const experiment of studio.state.qualityData?.experiments || []) {
         if (experiment.status === 'running') studio.Quality?.stopExperiment(experiment.id);
       }
       for (const run of studio.state.runs || []) {
         if (!['running', 'waiting', 'queued', 'pending'].includes(run.status)) continue;
         // Historical demo rows predate Runtime and do not contain its tool-call array.
-        if (run.engine === 'graph' && Array.isArray(run.toolCalls) && studio.Runtime?.stop) studio.Runtime.stop(run.id);
+        if (Array.isArray(run.toolCalls) && studio.Runtime?.stop) studio.Runtime.stop(run.id);
         else {
           run.status = 'stopped';
           run.finishedAt = Date.now();
           run.duration = run.finishedAt - (run.created || run.finishedAt);
           run.pending = null;
-          run.stopReason = '登录会话结束，已停止本地执行。';
+          run.pendingQueue = [];
+          run.stopReason = reason === 'space-switch' ? '切换空间，已停止本地执行。' : '登录会话结束，已停止本地执行。';
         }
       }
       studio.Publishing?.clearSession();
@@ -234,7 +235,7 @@
       studio.timers?.clear();
       studio.closeModal?.();
       studio.session = {};
-      studio.save?.();
+      return studio.save?.() !== false;
     } finally { workspaceStopping = false; }
   }
 
@@ -569,7 +570,7 @@
   const api = window.StudioAuth = {
     attach, dispose, getSession, workspaceStorageKey, guard, isAuthRoute, safeReturnHash,
     createAccount, signIn, enterDemo, beginReset, resetChallenge, resetPassword,
-    logout, expire, openAccount, resume,
+    logout, expire, openAccount, resume, stopWorkspace,
     constants: Object.freeze({ ACCOUNT_KEY, SESSION_KEY, REMEMBER_KEY, RETURN_KEY, LEGACY_WORKSPACE, SESSION_TTL, REMEMBER_TTL, RESET_TTL })
   };
 })();

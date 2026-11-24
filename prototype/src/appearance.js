@@ -12,10 +12,10 @@
   '空间设置':'Space Settings','我的空间':'My Space','个人工作空间':'Personal Workspace','我的工作空间':'My Workspace',
   '本地原型':'Local Prototype','本地交互原型':'Interactive Prototype','搜索工作空间':'Search Workspace',
   '本月用量':'Monthly Usage','我的账户':'My Account','我的账户与退出':'Account & Sign Out',
-  '我的账户与退出登录':'Account & Sign Out','管理员演示':'Admin Demo','空间所有者':'Workspace Owner',
+  '我的账户与退出登录':'Account & Sign Out of Workspace','管理员演示':'Admin Demo','空间所有者':'Workspace Owner',
   '空间类型':'Workspace Type','个人空间':'Personal Space','关闭':'Close','返回':'Back','创建':'Create',
   '保存':'Save','取消':'Cancel','编辑':'Edit','删除':'Delete','确定':'Confirm','新增':'New',
-  '登录':'Sign in','注册':'Sign up','登录工作空间':'Sign in to your workspace','创建本地账户':'Create local account',
+  '登录':'Sign in','注册':'Sign up','登录工作空间':'Sign in to your workspace',
   '忘记密码':'Forgot password','重置密码':'Reset password','重置本地密码':'Reset local password',
   '登录状态已失效':'Session expired','欢迎回来':'Welcome back','创建你的工作空间':'Create your workspace',
   '你的称呼':'Your name','邮箱':'Email','密码':'Password','设置密码':'Set password','确认密码':'Confirm password',
@@ -24,7 +24,7 @@
   '进入演示空间':'Enter demo workspace','创建本地账户':'Create local account','返回登录':'Back to sign in',
   '忘记密码？':'Forgot password?','先了解产品':'Explore the platform',
   '重新登录':'Sign in again','退出登录':'Sign out','会话状态':'Session status',
-  '登录已失效':'Session expired','找回访问方式':'Recover access','继续本地重置':'Continue reset',
+  '登录已失效':'Login expired','找回访问方式':'Recover access','继续本地重置':'Continue reset',
   '更新本地密码':'Update local password','重新生成演示码':'Regenerate demo code',
   '切换主题':'Change theme','语言':'Language','主题':'Theme',
   '从一个想法，':'From one idea,','到可运行的应用。':'to a working application.',
@@ -66,7 +66,7 @@
    const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
    const nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);
    nodes.forEach(node=>{
-    if(node.parentElement?.closest('script,style,textarea,pre,code,kbd,[contenteditable],.mono,.code-editor,.auth-credential-demo'))return;
+    if(node.parentElement?.closest('script,style,textarea,pre,code,kbd,[contenteditable],[data-no-i18n],[data-chrome="space-name"],[data-chrome="account-name"],[data-chrome="space-initial"],[data-chrome="initials"],.mono,.code-editor,.auth-credential-demo'))return;
     const raw=node.nodeValue,trimmed=raw.trim();
     if(labels[trimmed])node.nodeValue=raw.replace(trimmed,labels[trimmed]);
    });
@@ -78,7 +78,7 @@
    const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
    const nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);
    nodes.forEach(node=>{
-    if(node.parentElement?.closest('script,style,textarea,pre,code,kbd,[contenteditable],.mono,.code-editor,.auth-credential-demo'))return;
+    if(node.parentElement?.closest('script,style,textarea,pre,code,kbd,[contenteditable],[data-no-i18n],[data-chrome="space-name"],[data-chrome="account-name"],[data-chrome="space-initial"],[data-chrome="initials"],.mono,.code-editor,.auth-credential-demo'))return;
     const raw=node.nodeValue,trimmed=raw.trim();if(inverse[trimmed])node.nodeValue=raw.replace(trimmed,inverse[trimmed]);
    });
   }
@@ -90,8 +90,22 @@
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content',getComputedStyle(document.documentElement).getPropertyValue('--bg-app').trim());
   persist();updateChrome();return true;
  }
+ function hasUncommittedInput(){
+  if(studio?.dirty||document.getElementById?.('app-dialog')?.open)return true;
+  return Array.from(document.querySelectorAll('#page-content form input, #page-content form textarea, #page-content form select')).some(el=>{
+   if(el.disabled||['hidden','button','submit'].includes(el.type))return false;
+   if(el.type==='checkbox'||el.type==='radio')return el.checked!==el.defaultChecked;
+   if(el.tagName==='SELECT'){
+    const options=Array.from(el.options),hasDefault=options.some(item=>item.defaultSelected);
+    return options.some((option,index)=>option.selected!==(option.defaultSelected||(!hasDefault&&!el.multiple&&index===0)));
+   }
+   return el.value!==el.defaultValue;
+  });
+ }
  function setLocale(next){
   if(!['zh-CN','en-US'].includes(next))return false;
+  if(next===locale)return true;
+  if(hasUncommittedInput()){studio?.toast(locale==='zh-CN'?'请先保存或放弃当前编辑，关闭弹窗后再切换语言。':'Save or discard your edits and close the dialog before changing language.','warning');return false;}
   locale=next;document.documentElement.lang=next;persist();
   if(studio){studio.closeModal?.();studio.render();} else location.reload();
   updateChrome();return true;
