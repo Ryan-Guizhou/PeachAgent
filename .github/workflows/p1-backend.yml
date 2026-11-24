@@ -47,6 +47,7 @@ jobs:
             kill -0 "$API"; sleep 2
           done
           curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'
+          python3 backend/qa/iam-smoke.py
           java -jar "$JAR" --spring.profiles.active=worker > worker.log 2>&1 &
           WORKER=$!
           for i in $(seq 1 40); do
@@ -57,4 +58,9 @@ jobs:
           kill -0 "$WORKER"
       - name: Cleanup
         if: always()
+        env:
+          MYSQL_ROOT_PASSWORD: ci-only-root
+          DB_USER: peachagent
+          DB_PASSWORD: ci-only-db
+          REDIS_PASSWORD: ci-only-redis
         run: docker compose -f compose.dev.yml down -v || true
