@@ -5,6 +5,7 @@ requests created through the Runtime. Full load is deliberately separate from or
 """
 import copy
 from concurrent.futures import ThreadPoolExecutor
+import http.client
 import http.cookiejar
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -112,6 +113,43 @@ class Client:
             calls=mysql("SELECT STATUS,COALESCE(ERROR_CODE,'NONE'),DISPATCH_INTENT_AT IS NOT NULL FROM RT_MODEL_CALL WHERE RUN_ID="+quote_id(run_id)+";")
             raise AssertionError((run_id,"Incomplete SSE",types,reconnects,detail.get("status"),detail.get("errorCode"),calls))
         return first, reconnects
+
+
+
+class ReadClient:
+    """One HTTP/1.1 connection per concurrent reader, with no warmup or retries."""
+    def __init__(self, source):
+        self.jar = http.cookiejar.CookieJar()
+        for cookie in source.jar:
+            self.jar.set_cookie(copy.copy(cookie))
+        self.csrf = source.csrf
+        address = urllib.parse.urlsplit(BASE)
+        self.connection = http.client.HTTPConnection(address.hostname, address.port, timeout=45)
+        self.opened_connections = 0
+
+    def call(self, path):
+        url = BASE + '/api/v1' + path
+        headers = {'Origin': ORIGIN, 'Content-Type': 'application/json'}
+        if self.csrf:
+            headers['X-CSRF-Token'] = self.csrf
+        request = urllib.request.Request(url, headers=headers)
+        self.jar.add_cookie_header(request)
+        target = urllib.parse.urlsplit(url)
+        if self.connection.sock is None:
+            self.opened_connections += 1
+        self.connection.request('GET', target.path + ('?' + target.query if target.query else ''),
+                                headers=dict(request.header_items()))
+        response = self.connection.getresponse()
+        try:
+            self.jar.extract_cookies(response, request)
+            status, body = response.status, response.read()
+        finally:
+            response.close()
+        assert status == 200, ('Read benchmark HTTP status', status, path)
+        return json.loads(body)
+
+    def close(self):
+        self.connection.close()
 
 
 def mail_code(email):
@@ -298,23 +336,32 @@ def read_benchmark(scope):
         next_paths.append(path + "&" + urllib.parse.urlencode({"before": last["createdAt"], "beforeId": last["id"]}))
 
     def reader(index):
-        client = Client(scope["client"])
+        client = ReadClient(scope["client"])
         path = paths[index % 2]
         values = []
-        barrier.wait(timeout=30)
-        for page in range(10):
-            start = time.monotonic()
-            rows = client.call("GET", path if page % 2 == 0 else next_paths[index % 2])
-            values.append((time.monotonic() - start) * 1000)
-            assert len(rows) == 50 and all(row["createdAt"] == HISTORY_TIME for row in rows)
-        return index % 2, values
+        try:
+            # No preconnect or warmup: the first request (including TCP connection) is measured.
+            barrier.wait(timeout=30)
+            for page in range(10):
+                start = time.monotonic()
+                rows = client.call(path if page % 2 == 0 else next_paths[index % 2])
+                values.append((time.monotonic() - start) * 1000)
+                assert len(rows) == 50 and all(row["createdAt"] == HISTORY_TIME for row in rows)
+            return index % 2, values, client.opened_connections
+        finally:
+            client.close()
 
     with ThreadPoolExecutor(max_workers=50) as pool:
         result = list(pool.map(reader, range(50)))
-    runs = [v for kind, items in result if kind == 0 for v in items]
-    calls = [v for kind, items in result if kind == 1 for v in items]
+    runs = [v for kind, items, _ in result if kind == 0 for v in items]
+    calls = [v for kind, items, _ in result if kind == 1 for v in items]
+    assert len(runs) == len(calls) == 250
     return {"concurrency": 50, "runSamples": len(runs), "callSamples": len(calls),
-            "runP95Ms": p95(runs), "callP95Ms": p95(calls)}
+            "runP95Ms": p95(runs), "callP95Ms": p95(calls),
+            "runFirstRequestP95Ms": p95([items[0] for kind, items, _ in result if kind == 0]),
+            "callFirstRequestP95Ms": p95([items[0] for kind, items, _ in result if kind == 1]),
+            "openedConnections": sum(connections for _, _, connections in result),
+            "transport": "HTTP/1.1 one connection per reader; first connection included; no warmup or retry"}
 
 
 def assert_processes_alive():

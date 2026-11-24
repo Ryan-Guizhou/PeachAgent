@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'backend/qa/performance-smoke.py'
+      - 'backend/qa/performance-client-test.py'
       - 'backend/peachagent-common/src/main/java/com/peachsoft/peachagent/common/pagination/**'
       - '.github/workflows/p1-performance.yml'
   workflow_dispatch:
@@ -29,6 +30,8 @@ jobs:
           java-version: '21'
           cache: maven
           cache-dependency-path: backend/**/pom.xml
+      - name: Validate read load generator
+        run: python3 backend/qa/performance-client-test.py
       - name: Package API and Worker
         run: mvn -B -f backend/pom.xml -DskipTests package
       - name: Start isolated database and middleware
