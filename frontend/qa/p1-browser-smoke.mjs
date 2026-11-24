@@ -187,13 +187,19 @@ try {
   assert.equal(await page.getByText('Unsaved matrix fixture',{exact:true}).count(),0)
   // Navigate using the application router; duplicate navigation must not clear the active page.
   async function navigate(route){
-    if(new URL(page.url()).hash!=='#/'+route){
-      if(await page.locator('.mobile-menu').isVisible())await page.locator('.mobile-menu').click()
-      await page.locator('#studio-navigation nav a[href="#/'+route+'"]').click()
+    // Matrix visits a real URL; dedicated cases below exercise RouterLink and dirty navigation.
+    if(new URL(page.url()).hash!=='#/'+route)await page.goto(base+'/#/'+route)
+    try{
+      await page.waitForFunction(route=>location.hash==='#/'+route&&
+        document.querySelector('.heading .eyebrow')?.textContent?.includes(route.toUpperCase())&&
+        document.querySelector('main')?.getAttribute('aria-busy')==='false',route)
+    }catch(error){
+      const state=await page.evaluate(()=>({hash:location.hash,heading:document.querySelector('main h1')?.textContent,
+        loading:document.querySelector('main')?.getAttribute('aria-busy'),dialog:!!document.querySelector('[role="dialog"]'),
+        theme:document.documentElement.dataset.theme,locale:document.documentElement.lang}))
+      console.error('Route readiness failure '+route+' '+JSON.stringify(state))
+      throw error
     }
-    await page.waitForFunction(route=>location.hash==='#/'+route&&
-      document.querySelector('.heading .eyebrow')?.textContent?.includes(route.toUpperCase())&&
-      document.querySelector('main')?.getAttribute('aria-busy')==='false',route)
   }
   await page.locator('main .panel-head button.primary').first().click()
   await page.locator('.dialog input').first().fill('Unsaved navigation fixture')
@@ -220,10 +226,18 @@ try {
       await page.waitForFunction(v=>document.documentElement.dataset.theme===v,theme)
       await page.locator('main').getByRole('combobox',{name:/语言|Language/}).selectOption(locale)
       await page.waitForFunction(v=>document.documentElement.lang===v,locale)
+      // Selecting an already active preference can satisfy the DOM predicate before its PATCH returns.
+      await page.waitForFunction(()=>document.querySelectorAll('main select').length===2&&document.querySelectorAll('main select:disabled').length===0)
+      const preferencesResponse=await page.request.get(base+'/api/v1/auth/me')
+      assert.ok(preferencesResponse.ok())
+      const saved=await preferencesResponse.json()
+      assert.equal(saved.theme,theme)
+      assert.equal(saved.locale,locale)
       for(const width of [1440,1024,768,390]){
         await page.setViewportSize({width,height:900})
         console.log('CHECK matrix '+theme+'/'+locale+'/'+width)
         for (const [index,route] of pages.entries()){
+          console.log('CHECK route '+route)
           await navigate(route)
           await page.waitForFunction(({route,heading})=>
             document.querySelector('.heading .eyebrow')?.textContent?.includes(route.toUpperCase())&&
@@ -247,7 +261,13 @@ try {
       await firstLink.focus()
       await page.keyboard.press('Escape')
       assert.equal(await page.locator('.mobile-menu').getAttribute('aria-expanded'),'false')
-      assert.ok(await page.locator('.mobile-menu').evaluate(el=>el===document.activeElement))
+      await page.waitForFunction(()=>document.querySelector('.mobile-menu')===document.activeElement)
+      await page.locator('.mobile-menu').click()
+      await firstLink.focus()
+      await page.keyboard.press('Enter')
+      await page.waitForURL('**/#/home')
+      await navigate('home')
+      assert.equal(await page.locator('.mobile-menu').getAttribute('aria-expanded'),'false')
     }
   }
   assert.equal(verified,240)
