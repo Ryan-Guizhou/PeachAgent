@@ -74,8 +74,8 @@ a.call("POST", "/auth/email-challenges", {"email":"p1-a@example.invalid","purpos
 new_code = read_code("p1-a@example.invalid", old_code)
 a.call("POST", "/auth/password-reset", {"email":"p1-a@example.invalid","token":new_code,"password":"CI-only-reset-passphrase-456"}, 204)
 a.call("GET", "/auth/me", expected=401)
-a.call("POST", "/auth/login", {"email":"p1-a@example.invalid","password":"CI-only-test-passphrase-123"}, 401)
-new_login=a.call("POST","/auth/login",{"email":"p1-a@example.invalid","password":"CI-only-reset-passphrase-456"})
+a.call("POST", "/auth/login", {"email":"p1-a@example.invalid","password":"CI-only-test-passphrase-123","remember":False}, 401)
+new_login=a.call("POST","/auth/login",{"email":"p1-a@example.invalid","password":"CI-only-reset-passphrase-456","remember":False})
 a.csrf=new_login["csrfToken"]
 a.call("GET","/admin/users",expected=403)
 a.call("POST", "/auth/logout", {}, 204)
