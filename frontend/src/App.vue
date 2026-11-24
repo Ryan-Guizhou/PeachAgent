@@ -29,20 +29,20 @@ function clearEdit(){edit.value='';form.value={};dirty.value=false}
 function canLeave(){return !dirty.value||window.confirm(tr('放弃未保存的内容？','Discard unsaved changes?'))}
 function closeEdit(){if(canLeave())clearEdit()}
 function stopStream(){stream.value?.close();stream.value=null}
-function clearPage(){stopStream();conversation.value='';activeRun.value='';streamText.value='';messages.value=[];runDetail.value=null;events.value=[];selectedPrompt.value=null;versions.value=[];rows.value=[];providers.value=[];credentials.value=[];bindings.value=[];defaults.value=[];references.value=[];calls.value=[];budgets.value=[];query.value='';clearEdit()}
+function clearPage(){generation++;stopStream();conversations.value=[];modelId.value='';promptVersionId.value='';chatText.value='';variables.value='{}';conversation.value='';activeRun.value='';streamText.value='';messages.value=[];runDetail.value=null;events.value=[];selectedPrompt.value=null;versions.value=[];rows.value=[];providers.value=[];credentials.value=[];bindings.value=[];defaults.value=[];references.value=[];calls.value=[];budgets.value=[];query.value='';clearEdit()}
 async function refresh(){
- const g=++generation,wp=s.w,pp=s.p,where=page.value
+ const g=++generation,wp=s.w,pp=s.p,where=page.value;const valid=()=>g===generation&&s.user&&wp===s.w&&pp===s.p&&where===page.value
  if(!s.user)return
  error.value=''
  try{
-   if(where==='home'){rows.value=await s.request(pp+'/runs')}
-   else if(where==='models'){const a=await Promise.all([s.request<Row[]>(wp+'/models'),s.request<Row[]>(wp+'/providers'),s.request<Row[]>(wp+'/credentials'),s.request<Row[]>('/model-protocols'),s.request<Row[]>(pp+'/model-bindings'),s.request<Row[]>(pp+'/model-defaults')]);if(g!==generation)return;[rows.value,providers.value,credentials.value,protocols.value,bindings.value,defaults.value]=a}
-   else if(where==='credentials'){rows.value=await s.request(wp+'/credentials')}
-   else if(where==='prompts'){[rows.value,references.value]=await Promise.all([s.request(pp+'/prompts'),s.request(pp+'/prompt-references')])}
-   else if(where==='plugins'){rows.value=await s.request(wp+'/plugin-manifests')}
-   else if(where==='chat'){[conversations.value,bindings.value,rows.value,references.value]=await Promise.all([s.request(pp+'/conversations'),s.request(pp+'/model-bindings'),s.request(pp+'/prompts'),s.request(pp+'/prompt-references')]);if(!modelId.value||!activeBindings.value.some(x=>x.modelId===modelId.value))modelId.value=activeBindings.value[0]?.modelId||'';if(conversation.value)await openConversation(conversation.value)}
+   if(where==='home'){{const result=await s.request<Row[]>(pp+'/runs');if(valid())rows.value=result}}
+   else if(where==='models'){const a=await Promise.all([s.request<Row[]>(wp+'/models'),s.request<Row[]>(wp+'/providers'),s.request<Row[]>(wp+'/credentials'),s.request<Row[]>('/model-protocols'),s.request<Row[]>(pp+'/model-bindings'),s.request<Row[]>(pp+'/model-defaults')]);if(!valid())return;[rows.value,providers.value,credentials.value,protocols.value,bindings.value,defaults.value]=a}
+   else if(where==='credentials'){{const result=await s.request<Row[]>(wp+'/credentials');if(valid())rows.value=result}}
+   else if(where==='prompts'){const result=await Promise.all([s.request<Row[]>(pp+'/prompts'),s.request<Row[]>(pp+'/prompt-references')]);if(valid())[rows.value,references.value]=result}
+   else if(where==='plugins'){{const result=await s.request<Row[]>(wp+'/plugin-manifests');if(valid())rows.value=result}}
+   else if(where==='chat'){const result=await Promise.all([s.request<Row[]>(pp+'/conversations'),s.request<Row[]>(pp+'/model-bindings'),s.request<Row[]>(pp+'/prompts'),s.request<Row[]>(pp+'/prompt-references')]);if(!valid())return;[conversations.value,bindings.value,rows.value,references.value]=result;if(!modelId.value||!activeBindings.value.some(x=>x.modelId===modelId.value))modelId.value=activeBindings.value[0]?.modelId||'';if(conversation.value)await openConversation(conversation.value)}
    else if(where==='runs'){rows.value=await s.request(pp+'/runs')}
-   else if(where==='usage'){[budgets.value,calls.value]=await Promise.all([s.request(pp+'/budgets'),s.request(pp+'/usage?from='+utcString(new Date(Date.now()-30*86400000))+'&to='+utcString(new Date(Date.now()+86400000)))])}
+   else if(where==='usage'){const result=await Promise.all([s.request<Row[]>(pp+'/budgets'),s.request<Row[]>(pp+'/usage?from='+utcString(new Date(Date.now()-30*86400000))+'&to='+utcString(new Date(Date.now()+86400000)))]);if(valid())[budgets.value,calls.value]=result}
  }catch(e){if(g===generation)fail(e)}
 }
 async function authSubmit(){
@@ -93,7 +93,7 @@ async function mutate(path:string,body:Row={},method='POST',confirm=false){if(co
 async function publish(x:Row){await mutate(s.p+'/prompts/'+x.id+'/versions',{changeNote:'',rowVersion:x.rowVersion})}
 async function showVersions(x:Row){selectedPrompt.value=x;versions.value=await s.request(s.p+'/prompts/'+x.id+'/versions')}
 async function newChat(){await action(async()=>{const c=await s.request<Row>(s.p+'/conversations','POST',{title:tr('新对话','New conversation')});await refresh();await openConversation(c.id)})}
-async function openConversation(id:string){stopStream();conversation.value=id;streamText.value='';messages.value=await s.request(s.p+'/conversations/'+id+'/messages');const c=conversations.value.find(x=>x.id===id);activeRun.value=c?.activeRunId||'';if(activeRun.value)subscribe(activeRun.value)}
+async function openConversation(id:string){stopStream();conversation.value=id;streamText.value='';const scope=s.p,g=generation;const result=await s.request<Row[]>(scope+'/conversations/'+id+'/messages');if(g!==generation||scope!==s.p||conversation.value!==id)return;messages.value=result;const c=conversations.value.find(x=>x.id===id);activeRun.value=c?.activeRunId||'';if(activeRun.value)subscribe(activeRun.value)}
 function subscribe(id:string){
  stopStream();activeRun.value=id;const scope=s.p;const source=new EventSource('/api/v1'+scope+'/runs/'+id+'/events');stream.value=source
  let cursor=0
@@ -101,7 +101,7 @@ function subscribe(id:string){
    if(stream.value!==source)return;const seq=Number(event.lastEventId);if(seq<=cursor)return;cursor=seq
    const e=JSON.parse(event.data);if(page.value==='runs')events.value.push(e)
    if(kind==='delta')streamText.value+=e.payload.text
-   if(kind==='terminal'){source.close();stream.value=null;activeRun.value='';if(page.value==='chat')void refresh();else if(page.value==='runs')void s.request<Row>(scope+'/runs/'+id).then(x=>runDetail.value=x)}
+   if(kind==='terminal'){source.close();stream.value=null;activeRun.value='';if(page.value==='chat')void refresh();else if(page.value==='runs')void s.request<Row>(scope+'/runs/'+id).then(x=>{if(s.p===scope&&page.value==='runs'&&runDetail.value?.id===id)runDetail.value=x})}
  })
  source.onerror=()=>{if(stream.value!==source)return;void s.request<Row>(scope+'/runs/'+id).then(x=>{if(['SUCCEEDED','FAILED','CANCELLED','INTERRUPTED'].includes(x.status)){stopStream();activeRun.value='';void refresh()}}).catch(fail)}
 }
@@ -110,7 +110,7 @@ async function send(){
  await action(async()=>{const text=chatText.value;const r=await s.request<Row>(s.p+'/conversations/'+conversation.value+'/runs','POST',{modelId:modelId.value,text,promptVersionId:promptVersionId.value||null,variables:JSON.parse(variables.value),maxOutputTokens:null},requestKey());chatText.value='';streamText.value='';await refresh();subscribe(r.id)})
 }
 async function cancel(){if(activeRun.value)await mutate(s.p+'/runs/'+activeRun.value+'/cancel')}
-async function showRun(x:Row){runDetail.value=await s.request(s.p+'/runs/'+x.id);events.value=[];streamText.value='';subscribe(x.id)}
+async function showRun(x:Row){const scope=s.p,g=generation;const result=await s.request<Row>(scope+'/runs/'+x.id);if(g!==generation||scope!==s.p||page.value!=='runs')return;runDetail.value=result;events.value=[];streamText.value='';subscribe(x.id)}
 async function retry(id:string){if(!window.confirm(tr('重试可能产生新的供应商费用。继续？','Retry may incur additional provider charges. Continue?')))return;await action(async()=>{const r=await s.request<Row>(s.p+'/runs/'+id+'/retry','POST',{acknowledgeUnknown:true},requestKey());if(page.value==='chat'){await refresh();subscribe(r.id)}else await showRun(r)})}
 function onUnload(event:BeforeUnloadEvent){if(dirty.value){event.preventDefault();event.returnValue=''}}
 onMounted(async()=>{try{await s.boot();await refresh()}catch(e){if(s.user)fail(e)}finally{loading.value=false}window.addEventListener('beforeunload',onUnload);stopWatch=router.beforeEach(()=>{if(!canLeave())return false;clearPage();mobile.value=false;return true})})
