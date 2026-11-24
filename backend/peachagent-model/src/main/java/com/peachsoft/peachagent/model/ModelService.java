@@ -227,11 +227,37 @@ public class ModelService {
     }
 
     public Snapshot snapshot(ScopeContext s,String modelId,boolean diagnostic){
-        identity.assertCurrentScope(s);
-        var m=model(s,modelId);active(m);var p=provider(s,(String)m.get("PROVIDER_ID"));active(p);
-        Integer bound=jdbc.queryForObject("SELECT COUNT(*) FROM MODEL_PROJECT_BINDING WHERE TENANT_ID = ? AND WORKSPACE_ID = ? AND PROJECT_ID = ? AND MODEL_ID = ? AND STATUS = 'ACTIVE'",
-                Integer.class,s.tenantId(),s.workspaceId(),s.requireProject(),modelId);
-        if(!Integer.valueOf(1).equals(bound))throw new DomainException("MODEL_NOT_BOUND",403,"Model not bound to project");
+        return snapshot(s,modelId,diagnostic,identity.active(s.userId()));
+    }
+
+    /** 受理事务已重新读取当前账号时复用本次身份，仍独立校验作用域、配置和绑定。 */
+    public Snapshot snapshot(ScopeContext s,String modelId,boolean diagnostic,IdentityService.Principal principal){
+        identity.assertCurrentScope(principal,s);
+        // 单个语句读取实例、连接及绑定事实，避免多个数据库往返与不同语句快照。
+        var m=one("""
+                SELECT M.ID,M.PROVIDER_ID,M.EXTERNAL_MODEL_ID,M.MODEL_TYPE,M.PROTOCOL_KEY,M.PROTOCOL_VERSION,
+                    M.PROTOCOL_OPTIONS,M.CAPABILITIES,M.MODEL_OPTIONS,M.PRICING,M.ENABLED,M.STATUS,M.CONFIG_REVISION,
+                    M.VERIFY_STATUS,M.VERIFIED_CONFIG_REVISION,M.VERIFIED_PROVIDER_REVISION,
+                    M.VERIFIED_CREDENTIAL_REVISION,M.VERIFIED_ADAPTER_KEY,M.VERIFIED_ADAPTER_VERSION,
+                    P.ID AS P_ID,P.AUTH_METHOD AS P_AUTH_METHOD,P.BASE_URL AS P_BASE_URL,
+                    P.CREDENTIAL_ID AS P_CREDENTIAL_ID,P.TIMEOUT_MS AS P_TIMEOUT_MS,
+                    P.PROTOCOL_CONFIG AS P_PROTOCOL_CONFIG,P.ENABLED AS P_ENABLED,P.STATUS AS P_STATUS,
+                    P.CONFIG_REVISION AS P_CONFIG_REVISION,
+                    EXISTS(SELECT 1 FROM MODEL_PROJECT_BINDING B WHERE B.TENANT_ID = M.TENANT_ID
+                        AND B.WORKSPACE_ID = M.WORKSPACE_ID AND B.MODEL_ID = M.ID
+                        AND B.PROJECT_ID = ? AND B.STATUS = 'ACTIVE') AS BOUND
+                FROM MODEL_INSTANCE M JOIN MODEL_PROVIDER P ON P.TENANT_ID = M.TENANT_ID
+                    AND P.WORKSPACE_ID = M.WORKSPACE_ID AND P.ID = M.PROVIDER_ID
+                WHERE M.TENANT_ID = ? AND M.WORKSPACE_ID = ? AND M.ID = ?
+                """,s.requireProject(),s.tenantId(),s.workspaceId(),modelId);
+        active(m);
+        Map<String,Object> p=new HashMap<>();
+        for(String column:List.of("ID","AUTH_METHOD","BASE_URL","CREDENTIAL_ID","TIMEOUT_MS","PROTOCOL_CONFIG","ENABLED","STATUS","CONFIG_REVISION"))
+            p.put(column,m.get("P_"+column));
+        active(p);
+        Object bound=m.get("BOUND");
+        if(!Boolean.TRUE.equals(bound)&&!(bound instanceof Number count&&count.intValue()==1))
+            throw new DomainException("MODEL_NOT_BOUND",403,"Model not bound to project");
         String type=(String)m.get("MODEL_TYPE"),operation=OPERATIONS.get(type);
         ProtocolKey protocol=new ProtocolKey((String)m.get("PROTOCOL_KEY"),(String)m.get("PROTOCOL_VERSION"));
         var adapter=registry.resolve(protocol,type,operation);
@@ -242,7 +268,7 @@ public class ModelService {
         if(!diagnostic&&(!"VERIFIED".equals(m.get("VERIFY_STATUS")) || !Objects.equals(m.get("VERIFIED_ADAPTER_KEY"),adapter.descriptor().adapterKey()) || !Objects.equals(m.get("VERIFIED_ADAPTER_VERSION"),adapter.descriptor().adapterVersion()) || !sameRevision(m,"VERIFIED_CONFIG_REVISION",n(m,"CONFIG_REVISION")) || !sameRevision(m,"VERIFIED_PROVIDER_REVISION",n(p,"CONFIG_REVISION")) || !sameRevision(m,"VERIFIED_CREDENTIAL_REVISION",credentials.revision(s,credential))))throw new DomainException("MODEL_NOT_VERIFIED",409,"Verify model through a diagnostic first");
         return new Snapshot(modelId,(String)p.get("ID"),credential,(String)m.get("EXTERNAL_MODEL_ID"),type,protocol,adapter.descriptor().adapterKey(),
                 adapter.descriptor().adapterVersion(),n(m,"CONFIG_REVISION"),n(p,"CONFIG_REVISION"),base,auth,((Number)p.get("TIMEOUT_MS")).intValue(),
-                Map.copyOf(combined),ModelJson.object(mapper,m.get("PRICING")),identity.active(s.userId()).currency(),operation);
+                Map.copyOf(combined),ModelJson.object(mapper,m.get("PRICING")),principal.currency(),operation);
     }
 
     private static boolean sameRevision(Map<String,Object> row,String key,long revision){return row.get(key) instanceof Number number&&number.longValue()==revision;}

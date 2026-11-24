@@ -5,6 +5,7 @@ import com.peachsoft.peachagent.common.IdGenerator;
 import com.peachsoft.peachagent.common.JsonData;
 import com.peachsoft.peachagent.common.ScopeContext;
 import com.peachsoft.peachagent.common.TimeCodec;
+import com.peachsoft.peachagent.common.pagination.PageCursor;
 import com.peachsoft.peachagent.iam.DatabaseTimeProvider;
 import java.math.BigDecimal;
 import java.time.ZoneOffset;
@@ -14,6 +15,7 @@ import java.util.Map;
 import java.util.LinkedHashMap;
 import java.util.ArrayList;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.ResultSetExtractor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.json.JsonMapper;
@@ -32,6 +34,20 @@ public class BudgetService {
                          Long maxRunTokens,BigDecimal maxRunCost,long rowVersion) { }
 
     private List<Map<String,Object>> policies(ScopeContext s,boolean lock){
+        if(lock){
+            // 排序后的结果不代表 InnoDB 实际加锁顺序，逐级唯一键点查保证一致。
+            List<Map<String,Object>> locked=new ArrayList<>();
+            for(int index=0;index<3;index++){
+                String kind=List.of("TENANT","WORKSPACE","PROJECT").get(index);
+                String scope=List.of(s.tenantId(),s.workspaceId(),s.requireProject()).get(index);
+                locked.addAll(jdbc.queryForList("""
+                        SELECT ID,SCOPE_TYPE,SCOPE_ID,PERIOD_TYPE,MAX_CALLS,MAX_TOKENS,MAX_COST,CURRENCY,
+                            MAX_CONCURRENCY,MAX_RUN_SECONDS,MAX_RUN_TOKENS,MAX_RUN_COST,INFLIGHT_COUNT,STATUS,ROW_VERSION
+                        FROM BUDGET_POLICY WHERE TENANT_ID = ? AND SCOPE_TYPE = ? AND SCOPE_ID = ? FOR UPDATE
+                        """,s.tenantId(),kind,scope));
+            }
+            return requirePolicies(locked);
+        }
         var rows=jdbc.queryForList("""
                 SELECT ID,SCOPE_TYPE,SCOPE_ID,PERIOD_TYPE,MAX_CALLS,MAX_TOKENS,MAX_COST,CURRENCY,
                     MAX_CONCURRENCY,MAX_RUN_SECONDS,MAX_RUN_TOKENS,MAX_RUN_COST,INFLIGHT_COUNT,STATUS,ROW_VERSION
@@ -39,7 +55,11 @@ public class BudgetService {
                 ((SCOPE_TYPE = 'TENANT' AND SCOPE_ID = ?) OR (SCOPE_TYPE = 'WORKSPACE' AND SCOPE_ID = ?) OR
                 (SCOPE_TYPE = 'PROJECT' AND SCOPE_ID = ?))
                 ORDER BY CASE SCOPE_TYPE WHEN 'TENANT' THEN 1 WHEN 'WORKSPACE' THEN 2 ELSE 3 END
-                """+(lock?" FOR UPDATE":""),s.tenantId(),s.tenantId(),s.workspaceId(),s.requireProject());
+                """,s.tenantId(),s.tenantId(),s.workspaceId(),s.requireProject());
+        return requirePolicies(rows);
+    }
+
+    private List<Map<String,Object>> requirePolicies(List<Map<String,Object>> rows){
         if(rows.size()!=3||rows.stream().anyMatch(x->!"ACTIVE".equals(x.get("STATUS"))))
             throw new DomainException("BUDGET_POLICY_MISSING",409,"Active budget policy required");
         return rows;
@@ -221,14 +241,29 @@ public class BudgetService {
     }
 
     public List<Map<String,Object>> usage(ScopeContext s,String from,String to,int limit){
+        return usage(s,from,to,null,null,limit);
+    }
+
+    /** 用量明细支持稳定的时间/ID 游标，汇总仍独立于分页。 */
+    public List<Map<String,Object>> usage(ScopeContext s,String from,String to,String before,String beforeId,int limit){
         TimeCodec.parse(from);TimeCodec.parse(to);
         if(from.compareTo(to)>=0)throw new DomainException("INVALID_RANGE",422,"Invalid usage range");
-        return jdbc.queryForList("""
+        PageCursor cursor=PageCursor.of(before,beforeId);
+        String sql="""
                 SELECT ID,RUN_ID,MODEL_ID,MODEL_TYPE,PROTOCOL_KEY,STATUS,INPUT_TOKENS,OUTPUT_TOKENS,TOTAL_TOKENS,
                     CACHED_TOKENS,REASONING_TOKENS,USAGE_SOURCE,COST_AMOUNT,COST_CURRENCY,COST_SOURCE,CREATED_AT,FINISHED_AT
                 FROM RT_MODEL_CALL WHERE TENANT_ID = ? AND WORKSPACE_ID = ? AND PROJECT_ID = ? AND CREATED_AT >= ? AND CREATED_AT < ?
-                ORDER BY CREATED_AT DESC,ID DESC LIMIT ?
-                """,s.tenantId(),s.workspaceId(),s.requireProject(),from,to,Math.max(1,Math.min(100,limit)))
-                .stream().map(x->JsonData.view(mapper,x)).toList();
+                """;
+        List<Object> args=new ArrayList<>(List.of(s.tenantId(),s.workspaceId(),s.requireProject(),from,to));
+        if(cursor.hasTieBreaker()){
+            sql+=" AND (CREATED_AT < ? OR (CREATED_AT = ? AND ID < ?))";
+            args.add(cursor.time());args.add(cursor.time());args.add(cursor.id());
+        }else if(cursor.time()!=null){
+            sql+=" AND CREATED_AT <= ?";
+            args.add(cursor.time());
+        }
+        args.add(Math.max(1,Math.min(100,limit)));
+        ResultSetExtractor<List<Map<String,Object>>> projection=JsonData::readRows;
+        return jdbc.query(sql+" ORDER BY CREATED_AT DESC,ID DESC LIMIT ?",projection,args.toArray());
     }
 }

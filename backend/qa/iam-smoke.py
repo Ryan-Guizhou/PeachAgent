@@ -30,7 +30,8 @@ class Client:
         return json.loads(payload) if payload else None
 
 def read_code(email, exclude=None):
-    for _ in range(30):
+    # Mailpit may still be warming up on a busy runner. Do not regenerate or bypass the challenge.
+    for _ in range(120):
         with urllib.request.urlopen("http://127.0.0.1:8025/api/v1/messages", timeout=3) as response:
             messages = json.load(response).get("messages", [])
         for item in messages:

@@ -25,6 +25,9 @@ TERMINAL = {"SUCCEEDED", "FAILED", "CANCELLED", "INTERRUPTED"}
 REQUESTS = []
 FIXTURE_AUTH = []
 FIXTURE_MESSAGES = []
+EARLY_DELTA_RELEASE = threading.Event()
+EARLY_DELTA_TIMEOUT = threading.Event()
+EARLY_UPSTREAM_SENT = threading.Event()
 audio = io.BytesIO()
 with wave.open(audio, "wb") as w:
     w.setnchannels(1)
@@ -62,6 +65,19 @@ class Provider(BaseHTTPRequestHandler):
                 self.wfile.write(first);self.wfile.flush()
                 time.sleep(1)
                 self.close_connection=True
+                return
+            if obj.get("messages",[])[-1]["content"]=="early-stream-proof":
+                first=b'data: {"choices":[{"delta":{"content":"Early visible fragment"}}]}\n\n'
+                tail=b'data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}\n\ndata: [DONE]\n\n'
+                self.send_response(200)
+                self.send_header("Content-Type","text/event-stream")
+                self.send_header("Content-Length",str(len(first)+len(tail)))
+                self.end_headers()
+                self.wfile.write(first);self.wfile.flush()
+                EARLY_UPSTREAM_SENT.set()
+                if not EARLY_DELTA_RELEASE.wait(8):
+                    EARLY_DELTA_TIMEOUT.set()
+                self.wfile.write(tail);self.wfile.flush()
                 return
             if obj.get("model") == "reject":
                 self.send_error(429)
@@ -178,6 +194,55 @@ try:
             assert c.call("GET",p+"/runs/"+run["id"]+"/artifacts/"+artifact,raw=True)
             other.call("GET",p+"/runs/"+run["id"]+"/artifacts/"+artifact,expected=404)
         models[protocol["key"]]=m
+    # The upstream holds its final bytes until the downstream client observes the first delta.
+    early_model=models["openai.chat-completions"]
+    early=c.call("POST",p+"/models/"+early_model["id"]+"/debug",
+                 {"input":{"text":"early-stream-proof"},"audioBase64":None,"maxOutputTokens":32},key=key())
+    assert early["status"]=="QUEUED" and early["startedAt"] is None and early["finishedAt"] is None
+    assert early["queuedAt"]==early["createdAt"]==early["updatedAt"]
+    admitted=c.call("GET",p+"/runs/"+early["id"])
+    for field in ("id","traceId","runType","conversationId","userMessageId","assistantMessageId","retryOfRunId","queuedAt","deadlineAt","createdAt"):
+        assert admitted[field]==early[field],field
+    early_request=urllib.request.Request(BASE+"/api/v1"+p+"/runs/"+early["id"]+"/events",
+                     headers={"Origin":ORIGIN,"Accept":"text/event-stream"})
+    seen=False
+    durable=threading.Event()
+    def observe_durable_delta():
+        if not EARLY_UPSTREAM_SENT.wait(5):
+            return
+        query="SELECT COUNT(*) FROM RT_RUN_EVENT WHERE RUN_ID='"+str(uuid.UUID(early["id"]))+"' AND EVENT_TYPE='delta';"
+        while not EARLY_DELTA_RELEASE.is_set() and not EARLY_DELTA_TIMEOUT.is_set():
+            result=subprocess.run(["docker","compose","-f","compose.dev.yml","exec","-T","mysql","sh","-c",
+                'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql --batch --skip-column-names -u "$MYSQL_USER" "$MYSQL_DATABASE"'],
+                input=query,text=True,capture_output=True,timeout=5)
+            if result.returncode==0 and result.stdout.strip()=="1":
+                durable.set()
+                return
+            time.sleep(.05)
+    observer=threading.Thread(target=observe_durable_delta,daemon=True)
+    observer.start()
+    try:
+        with c.opener.open(early_request,timeout=15) as response:
+            pending=b""
+            while chunk:=response.read1(4096):
+                pending+=chunk
+                while b"\n" in pending:
+                    line,pending=pending.split(b"\n",1)
+                    if line.startswith(b"data: "):
+                        event=json.loads(line[6:])
+                        if event["eventType"]=="delta":
+                            assert not EARLY_DELTA_TIMEOUT.is_set(),("First delta buffered until upstream terminal","durableBeforeTail",durable.is_set(),"transportHeaders",{name:response.headers.get(name) for name in ("Content-Type","Transfer-Encoding","Content-Length","X-Accel-Buffering")})
+                            assert event["payload"]["text"]=="Early visible fragment"
+                            seen=True;EARLY_DELTA_RELEASE.set()
+    finally:
+        EARLY_DELTA_RELEASE.set()
+        observer.join(timeout=6)
+    assert seen
+    wait(c,p,early)
+    initial=replay_events(c,p,early)
+    assert initial[0]["seq"]==1 and initial[0]["eventType"]=="status" and initial[0]["payload"]["status"]=="QUEUED"
+    assert [event["seq"] for event in initial]==list(range(1,len(initial)+1))
+    print("PASS: committed admission projection, initial event sequence and downstream first delta before upstream final bytes")
     prompt=c.call("POST",p+"/prompts",{"name":"Fixture prompt","description":"","content":"Say hello to {{name}}",
          "variables":{"name":{"type":"string","required":True}},"rowVersion":None})
     version=c.call("POST",p+"/prompts/"+prompt["id"]+"/versions",{"changeNote":"Initial","rowVersion":prompt["rowVersion"]})
