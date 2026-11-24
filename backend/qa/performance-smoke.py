@@ -40,8 +40,10 @@ def mysql(sql):
     result = subprocess.run(
         ["docker", "compose", "-f", "compose.dev.yml", "exec", "-T", "mysql",
          "sh", "-c", 'MYSQL_PWD="$MYSQL_PASSWORD" exec mysql --batch --skip-column-names -u "$MYSQL_USER" "$MYSQL_DATABASE"'],
-        input=sql, text=True, capture_output=True, check=True, timeout=240,
+        input=sql, text=True, capture_output=True, check=False, timeout=240,
     )
+    if result.returncode:
+        raise AssertionError('MySQL benchmark fixture failed: ' + result.stderr[-1500:])
     return result.stdout.strip()
 
 

@@ -2,6 +2,7 @@ package com.peachsoft.peachagent.common.pagination;
 
 import com.peachsoft.peachagent.common.DomainException;
 import com.peachsoft.peachagent.common.TimeCodec;
+import java.time.DateTimeException;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
@@ -14,7 +15,11 @@ public record PageCursor(String time, String id) {
     /** 时间允许作为独立范围上界；使用 ID 时必须同时提供时间。 */
     public static PageCursor of(String time, String id) {
         if (time != null) {
-            TimeCodec.parse(time);
+            try {
+                TimeCodec.parse(time);
+            } catch (DateTimeException | IllegalArgumentException ex) {
+                throw new DomainException("INVALID_CURSOR", 422, "Invalid pagination cursor time");
+            }
         }
         if (id != null && (time == null || !UUID_PATTERN.matcher(id).matches())) {
             throw new DomainException("INVALID_CURSOR", 422, "Invalid pagination cursor");
