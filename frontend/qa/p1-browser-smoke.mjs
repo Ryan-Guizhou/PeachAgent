@@ -21,7 +21,7 @@ try {
   await page.locator('main h1').waitFor({timeout:20000})
   await page.locator('.scope select').first().locator('option').first().waitFor({state:'attached'})
   await page.goto(base+'/#/runs')
-  await page.waitForFunction(() => document.querySelector('main')?.textContent?.includes('SUCCEEDED'))
+  await page.locator('main [data-state="SUCCEEDED"]').first().waitFor()
   await page.screenshot({path:join(evidence,'real-runs.png')})
   // Delay the first real detail response; a later selection must retain ownership of the panel.
   const workspaceId=await page.locator('.scope select').first().inputValue()
@@ -113,7 +113,7 @@ try {
   await page.getByRole('button',{name:/Partial response QA/}).click()
   await page.getByText('Retained partial response',{exact:true}).waitFor()
   assert.equal(await page.getByText('Retained partial response',{exact:true}).count(),1)
-  assert.ok(await page.locator('.message').filter({hasText:'Retained partial response'}).getByText('ERROR',{exact:true}).isVisible())
+  assert.ok(await page.locator('.message').filter({hasText:'Retained partial response'}).locator('[data-state="ERROR"]').isVisible())
   await page.reload()
   await page.getByRole('button',{name:/Partial response QA/}).click()
   await page.getByText('Retained partial response',{exact:true}).waitFor()
@@ -174,28 +174,61 @@ try {
   assert.ok(summaryRows.every(row=>Number(row.knownTokenCalls)+Number(row.unknownTokenCalls)===Number(row.callCount)))
   await page.locator('#usage-summary-title').waitFor()
   console.log('PASS: three current-period budget buckets and uncapped usage-source summary')
-  await page.goto(base+'/#/settings')
+  // Verify dirty edit protection with real navigation and keyboard focus.
+  await page.goto(base+'/#/projects')
+  await page.locator('main[aria-busy="false"] .panel-head button.primary').first().click()
+  await page.locator('.dialog input').first().fill('Unsaved matrix fixture')
+  page.once('dialog',dialog=>dialog.dismiss())
+  await page.keyboard.press('Escape')
+  assert.ok(await page.getByRole('dialog').isVisible())
+  page.once('dialog',dialog=>dialog.accept())
+  await page.keyboard.press('Escape')
+  await page.getByRole('dialog').waitFor({state:'hidden'})
+  assert.equal(await page.getByText('Unsaved matrix fixture',{exact:true}).count(),0)
+  const headings={
+    'zh-CN':['工作台','空间与项目','模型中心','凭证中心','提示词','模型对话','运行记录','用量与预算','插件声明','设置'],
+    'en-US':['Overview','Projects','Models','Credentials','Prompts','Chat','Runs','Usage & budgets','Plugin manifests','Settings']
+  }
+  let verified=0
   for (const theme of ['editorial-light','obsidian-dark','nordic-slate']) {
-    const select=page.locator('main select').first()
-    await select.selectOption(theme)
-    await page.waitForFunction(v => document.documentElement.dataset.theme===v || document.querySelector('[data-theme="'+v+'"]')!==null,theme)
     for (const locale of ['zh-CN','en-US']) {
+      await page.setViewportSize({width:1440,height:900})
+      await page.goto(base+'/#/settings')
+      await page.locator('main[aria-busy="false"] select').first().selectOption(theme)
+      await page.waitForFunction(v=>document.documentElement.dataset.theme===v,theme)
       await page.locator('main select').nth(1).selectOption(locale)
-      await page.waitForFunction(v=>document.documentElement.lang===v || document.querySelector('main h2')?.textContent===(v==='en-US'?'Preferences':'个人偏好'),locale)
-      await page.screenshot({path:join(evidence,'settings-'+theme+'-'+locale+'.png')})
+      await page.waitForFunction(v=>document.documentElement.lang===v,locale)
+      for(const width of [1440,1024,768,390]){
+        await page.setViewportSize({width,height:900})
+        for (const [index,route] of pages.entries()){
+          await page.goto(base+'/#/'+route)
+          await page.waitForFunction(({route,heading})=>
+            document.querySelector('.heading .eyebrow')?.textContent?.includes(route.toUpperCase())&&
+            document.querySelector('main h1')?.textContent?.trim()===heading&&
+            document.querySelector('main')?.getAttribute('aria-busy')==='false',
+            {route,heading:headings[locale][index]})
+          assert.equal(new URL(page.url()).hash,'#/'+route)
+          assert.ok(await page.locator('main h1').isVisible())
+          assert.equal(await page.locator('main > [role="alert"]').count(),0,theme+'/'+locale+'/'+route)
+          const sizes=await page.evaluate(()=>({actual:document.documentElement.scrollWidth,viewport:window.innerWidth}))
+          assert.ok(sizes.actual<=sizes.viewport+2,'Page overflow '+JSON.stringify({theme,locale,width,route,...sizes}))
+          assert.equal(await page.locator('.scope select').count(),2)
+          if(width===1440||width===390)await page.screenshot({path:join(evidence,route+'-'+theme+'-'+locale+'-'+width+'.png')})
+          verified++
+        }
+      }
+      // Mobile navigation is keyboard operable and Escape returns focus.
+      await page.locator('.mobile-menu').click()
+      assert.equal(await page.locator('.mobile-menu').getAttribute('aria-expanded'),'true')
+      const firstLink=page.locator('#studio-navigation nav a').first()
+      await firstLink.focus()
+      await page.keyboard.press('Escape')
+      assert.equal(await page.locator('.mobile-menu').getAttribute('aria-expanded'),'false')
+      assert.ok(await page.locator('.mobile-menu').evaluate(el=>el===document.activeElement))
     }
   }
-  for (const width of [1440,1024,768,390]) {
-    await page.setViewportSize({width,height:900})
-    for (const route of pages) {
-      await page.goto(base+'/#/'+route)
-      await page.locator('main h1').waitFor()
-      assert.equal(new URL(page.url()).hash,'#/'+route)
-      await page.waitForFunction(r => document.querySelector('.heading .eyebrow')?.textContent?.includes(r.toUpperCase()),route)
-      assert.ok(await page.locator('main h1').isVisible())
-      if (route==='home'||route==='chat'||route==='models') await page.screenshot({path:join(evidence,route+'-'+width+'.png')})
-    }
-  }
+  assert.equal(verified,240)
+  console.log('PASS: 240 real route/theme/locale/viewport combinations, localized headings, no page overflow, dirty edit and mobile keyboard navigation')
   assert.deepEqual(errors,[])
   console.log('PASS: real browser login, persisted runs/prompts, workspace creation, all 10 routes at four viewport widths, three themes and two locales')
 } catch (error) {

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch, onBeforeUnmount } from 'vue'
 import { useSession, utcString, localTime, type Row } from '../api'
+import { systemLabel, errorLabel } from '../i18n/catalog'
 
 const props=defineProps<{scope:string,revision:number,locale:string}>()
 const session=useSession()
@@ -12,7 +13,7 @@ let generation=0
 const tr=(zh:string,en:string)=>props.locale==='en-US'?en:zh
 const display=(value:unknown)=>value===null||value===undefined?tr('未知','Unknown'):String(value)
 const remaining=(value:unknown,limit:unknown)=>limit===null||limit===undefined?tr('无限额','No cap'):display(value)
-const scopeLabel=(type:string)=>{const labels:Record<string,string>={TENANT:tr('租户','Tenant'),WORKSPACE:tr('工作空间','Workspace'),PROJECT:tr('项目','Project')};return labels[type]||type}
+const scopeLabel=(type:string)=>systemLabel(type,props.locale)
 async function load(){
   const request=++generation,scope=props.scope
   overview.value=[];summary.value=[];error.value=''
@@ -25,7 +26,7 @@ async function load(){
       session.request<Row[]>(scope+'/usage/summary?from='+from+'&to='+to)
     ])
     if(request===generation&&props.scope===scope){[overview.value,summary.value]=results}
-  }catch(e){if(request===generation)error.value=e instanceof Error?e.message:String(e)}
+  }catch(e){if(request===generation)error.value=errorLabel(e,props.locale)}
   finally{if(request===generation)loading.value=false}
 }
 watch(()=>[props.scope,props.revision],()=>{void load()},{immediate:true})
@@ -62,10 +63,10 @@ onBeforeUnmount(()=>{generation++})
       <table>
         <thead><tr><th>{{tr('类型','Type')}}</th><th>{{tr('调用','Calls')}}</th><th>Token</th><th>{{tr('费用','Cost')}}</th><th>{{tr('来源','Sources')}}</th></tr></thead>
         <tbody><tr v-for="(row,index) in summary" :key="index">
-          <td>{{row.modelType}}</td><td>{{row.callCount}}</td>
+          <td>{{systemLabel(row.modelType,props.locale)}}</td><td>{{row.callCount}}</td>
           <td>{{display(row.totalTokens)}}<small>{{tr('未知调用','Unknown calls')}} {{row.unknownTokenCalls}}</small></td>
           <td>{{display(row.costAmount)}} {{row.costCurrency}}<small>{{tr('未知调用','Unknown calls')}} {{row.unknownCostCalls}}</small></td>
-          <td>{{row.usageSource}} / {{row.costSource}}</td>
+          <td>{{systemLabel(row.usageSource,props.locale)}} / {{systemLabel(row.costSource,props.locale)}}</td>
         </tr></tbody>
       </table>
     </div>
