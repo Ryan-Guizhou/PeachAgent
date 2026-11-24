@@ -20,7 +20,7 @@ flowchart LR
   W --> R
 ```
 
-Install Git, JDK 21, Maven 3.9+, Node.js 22 (at least 22.12), npm and Docker Desktop or Docker Engine with Compose v2. From the repository root check `java -version`, `mvn -version`, `node -v`, `npm -v`, `docker version` and `docker compose version`. MySQL 3306, Redis 6379, Mailpit SMTP 1025/UI 8025, API 8080, Vite 5173 must be available. Middleware is published only on 127.0.0.1.
+Install Git, JDK 21, Maven 3.9+, Node.js 22 (at least 22.12), npm and Docker Desktop or Docker Engine with Compose v2. From the repository root check `java -version`, `mvn -version`, `node -v`, `npm -v`, `docker version` and `docker compose version`. MySQL 3306, Redis 6379, API 8080, Vite 5173 must be available; outbound QQ SMTP SSL port 465 must be reachable. Middleware is published only on 127.0.0.1.
 
 ## 2. Configure
 

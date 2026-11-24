@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.util.StringUtils;
 
 /**
  * 账号创建、一次性邮箱验证、密码恢复和真实登录。
@@ -86,7 +87,8 @@ public class AccountService {
             AccountRateLimiter limiter,
             AuditService audit,
             JavaMailSender mail,
-            @Value("${peachagent.mail-from}") String from) {
+            @Value("${peachagent.mail-from}") String from,
+            @Value("${spring.mail.username:}") String mailUsername) {
         this.jdbc = jdbc;
         this.ids = ids;
         this.time = time;
@@ -95,7 +97,7 @@ public class AccountService {
         this.limiter = limiter;
         this.audit = audit;
         this.mail = mail;
-        this.from = from;
+        this.from = StringUtils.hasText(from) ? from : mailUsername;
     }
 
     private static String email(String value) {

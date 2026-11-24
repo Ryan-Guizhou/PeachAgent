@@ -3,7 +3,7 @@ on:
   pull_request:
     paths:
       - 'database/**'
-      - 'backend/**/db/migration/**'
+      - 'backend/**/db/**'
       - '.github/workflows/p1-schema.yml'
   workflow_dispatch:
 permissions:
