@@ -198,6 +198,7 @@
     Object.assign(item, { name, description: text(values.description).slice(0, 500), content, tags: tags(values.tags), dependencies: tags(values.dependencies) });
     item.arguments = [...new Set([...content.matchAll(/{{\s*([^{}]+?)\s*}}/g)].map(m => m[1].trim()))].map(name => ({ name, required: true }));
     if (values.marketId) item.marketId = values.marketId;
+    if (values.origin && !old) item.origin = { projectId: String(values.origin.projectId), resourceId: String(values.origin.resourceId), version: String(values.origin.version) };
     rememberContent(item, old ? '保存内容更新' : '创建内容');
     if (!old) store.contents.unshift(item); commit(); return item;
   };

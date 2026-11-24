@@ -185,7 +185,7 @@
 
   function workspaceStorageKey() {
     const session = getSession();
-    return window.StudioSpaces?.active()?.storageKey || (session && !session.isDemo ? 'otryx-studio-workspace::' + session.accountId : LEGACY_WORKSPACE);
+    return window.StudioProjects?.active()?.storageKey || window.StudioSpaces?.active()?.storageKey || (session && !session.isDemo ? 'otryx-studio-workspace::' + session.accountId : LEGACY_WORKSPACE);
   }
 
   function safeReturnHash(value) {
@@ -212,7 +212,7 @@
     if (!studio || workspaceStopping) return false;
     workspaceStopping = true;
     try {
-      try { studio.Planning?.stopAll?.(reason); } catch (error) { if (reason === 'space-switch') throw error; /* Individual runs are stopped below as well. */ }
+      try { studio.Planning?.stopAll?.(reason); } catch (error) { if (reason === 'space-switch' || reason === 'project-switch') throw error; /* Individual runs are stopped below as well. */ }
       for (const experiment of studio.state.qualityData?.experiments || []) {
         if (experiment.status === 'running') studio.Quality?.stopExperiment(experiment.id);
       }
@@ -226,7 +226,7 @@
           run.duration = run.finishedAt - (run.created || run.finishedAt);
           run.pending = null;
           run.pendingQueue = [];
-          run.stopReason = reason === 'space-switch' ? '切换空间，已停止本地执行。' : '登录会话结束，已停止本地执行。';
+          run.stopReason = reason === 'space-switch' ? '切换空间，已停止本地执行。' : reason === 'project-switch' ? '切换项目，已停止本地执行。' : '登录会话结束，已停止本地执行。';
         }
       }
       studio.Publishing?.clearSession();
