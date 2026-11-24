@@ -5,6 +5,10 @@ import base64
 import http.cookiejar
 import io
 import json
+import os
+from pathlib import Path
+import signal
+import subprocess
 import threading
 import time
 import urllib.error
@@ -19,6 +23,7 @@ ORIGIN = "http://localhost:8080"
 PROVIDER = "http://127.0.0.1:18081"
 TERMINAL = {"SUCCEEDED", "FAILED", "CANCELLED", "INTERRUPTED"}
 REQUESTS = []
+FIXTURE_AUTH = []
 audio = io.BytesIO()
 with wave.open(audio, "wb") as w:
     w.setnchannels(1)
@@ -42,14 +47,20 @@ class Provider(BaseHTTPRequestHandler):
         raw = self.rfile.read(int(self.headers.get("Content-Length", "0")))
         path = self.path
         REQUESTS.append(path)
+        FIXTURE_AUTH.append((path, self.headers.get('Authorization'), self.headers.get('x-api-key')))
         if path.endswith("/chat/completions"):
             obj = json.loads(raw)
+            if obj.get("model") == "reject":
+                self.send_error(429)
+                return
             if obj.get("model") == "slow":
                 time.sleep(4)
+            if obj.get("model") == "crash":
+                time.sleep(45)
             events = [{"choices":[{"delta":{"content":"Fixture answer"}}]},
                       {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}]
             try: self.reply(("".join("data: "+json.dumps(x)+"\n\n" for x in events)+"data: [DONE]\n\n").encode(),"text/event-stream")
-            except BrokenPipeError: pass
+            except (BrokenPipeError, ConnectionResetError): pass
         elif path.endswith("/messages"):
             events=[{"type":"message_start","message":{"usage":{"input_tokens":8,"output_tokens":0}}},
                     {"type":"content_block_delta","delta":{"type":"text_delta","text":"Anthropic fixture"}},
@@ -92,8 +103,9 @@ class Client:
         return result
 
 def key(): return uuid.uuid4().hex
-def wait(c,p,run,expected="SUCCEEDED"):
-    for _ in range(160):
+def wait(c,p,run,expected="SUCCEEDED",timeout=40):
+    deadline=time.monotonic()+timeout
+    while time.monotonic()<deadline:
         detail=c.call("GET",p+"/runs/"+run["id"])
         if detail["status"] in TERMINAL:
             assert detail["status"]==expected,detail
@@ -107,9 +119,11 @@ def event_text(c,p,r):
 
 server=ThreadingHTTPServer(("127.0.0.1",18081),Provider)
 threading.Thread(target=server.serve_forever,daemon=True).start()
+recovery_worker = None
+recovery_log = None
 try:
     c=Client();user=c.login("p1-b@example.invalid","CI-only-test-passphrase-123")
-    other=Client();other.login("p1-a@example.invalid","CI-only-reset-passphrase-456")
+    other=Client();other_user=other.login("p1-a@example.invalid","CI-only-reset-passphrase-456")
     w="/workspaces/"+user["defaultWorkspaceId"]
     project=c.call("GET",w+"/projects")[0]
     p=w+"/projects/"+project["id"]
@@ -190,6 +204,42 @@ try:
     assert len(REQUESTS)==before+1
     assert all(x["inflightCount"]==0 for x in c.call("GET",p+"/budgets"))
     print("PASS: four concurrent idempotent submissions, one provider dispatch and budget settlement")
+    # Rotation invalidates verification; the next diagnostic must use the new credential.
+    rerank=next(m for m in models.values() if m["modelType"]=="RERANK")
+    credential_id=providers["BEARER"][1]
+    cred=next(x for x in c.call("GET",w+"/credentials") if x["id"]==credential_id)
+    other_w="/workspaces/"+other_user["defaultWorkspaceId"]
+    other.call("POST",other_w+"/credentials/"+credential_id+"/rotate",
+               {"secret":"CiOnlyForeignSecret","rowVersion":cred["rowVersion"]},expected=404)
+    foreign_space=c.call("POST","/workspaces",{"name":"Model isolation QA","description":""},expected=201)
+    foreign_w="/workspaces/"+foreign_space["id"]
+    foreign_p=foreign_w+"/projects/"+foreign_space["defaultProjectId"]
+    c.call("POST",foreign_p+"/model-bindings",{"modelId":rerank["id"],"active":True},expected=404)
+    c.call("POST",foreign_w+"/credentials/"+credential_id+"/rotate",
+           {"secret":"CiOnlyForeignSecret","rowVersion":cred["rowVersion"]},expected=404)
+    rotated=c.call("POST",w+"/credentials/"+credential_id+"/rotate",
+                   {"secret":"CiOnlyRotatedSecretNotProduction","rowVersion":cred["rowVersion"]})
+    assert rotated["secretRevision"]==cred["secretRevision"]+1 and "secret" not in rotated
+    current=next(x for x in c.call("GET",w+"/models") if x["id"]==rerank["id"])
+    assert current["verifyStatus"]=="UNVERIFIED"
+    rerank_body={"input":{"query":"fruit","documents":["apple","mountain"]},"audioBase64":None,"maxOutputTokens":None}
+    rotated_run=c.call("POST",p+"/models/"+rerank["id"]+"/debug",rerank_body,key=key())
+    wait(c,p,rotated_run)
+    assert FIXTURE_AUTH[-1][1]=="Bearer CiOnlyRotatedSecretNotProduction"
+    current=next(x for x in c.call("GET",w+"/models") if x["id"]==rerank["id"])
+    assert current["verifyStatus"]=="VERIFIED"
+    revoked=c.call("POST",w+"/credentials/"+credential_id+"/revoke",{"rowVersion":rotated["rowVersion"]})
+    assert revoked["status"]=="REVOKED"
+    before=len(REQUESTS)
+    c.call("POST",p+"/models/"+rerank["id"]+"/debug",rerank_body,expected=409,key=key())
+    assert len(REQUESTS)==before
+    c.call("POST",w+"/credentials/"+credential_id+"/rotate",
+           {"secret":"CiOnlyCannotRestore","rowVersion":revoked["rowVersion"]},expected=409)
+    c.call("POST",p+"/model-bindings",{"modelId":model["id"],"active":False})
+    c.call("POST",p+"/models/"+model["id"]+"/debug",concurrent_body,expected=403,key=key())
+    assert len(REQUESTS)==before
+    c.call("POST",p+"/model-bindings",{"modelId":model["id"],"active":True})
+    print("PASS: credential rotation uses new secret, verification invalidation, revoke, binding withdrawal and cross-scope isolation")
     # Stop a dispatched request, not merely an unclaimed queue entry.
     slow=c.call("POST",w+"/models",{"providerId":providers["NONE"][0],"name":"Slow fixture",
       "externalModelId":"slow","modelType":"LLM","protocolKey":model["protocolKey"],"protocolVersion":model["protocolVersion"],
@@ -204,6 +254,63 @@ try:
     wait(c,p,pending,"CANCELLED")
     assert all(x["inflightCount"]==0 for x in c.call("GET",p+"/budgets"))
     print("PASS: persisted retry, idempotent retry, cancellation after dispatch, budget slot release")
+    # Real upstream refusal must retain one uncertain dispatched call, not silently retry.
+    reject=c.call("POST",w+"/models",{"providerId":providers["NONE"][0],"name":"Reject fixture",
+      "externalModelId":"reject","modelType":"LLM","protocolKey":model["protocolKey"],"protocolVersion":model["protocolVersion"],
+      "protocolOptions":{},"capabilities":{},"modelOptions":{},"pricing":{"currency":"USD","perRequest":0.01},"enabled":True,"rowVersion":None})
+    c.call("POST",p+"/model-bindings",{"modelId":reject["id"],"active":True})
+    before=len(REQUESTS)
+    rejected=c.call("POST",p+"/models/"+reject["id"]+"/debug",concurrent_body,key=key())
+    failure=wait(c,p,rejected,"FAILED")
+    assert failure["errorCode"]=="MODEL_HTTP_429",failure
+    assert len(REQUESTS)==before+1
+    rejected_calls=[x for x in c.call("GET",p+"/usage?from=20000101000000&to=20990101000000") if x["runId"]==rejected["id"]]
+    assert len(rejected_calls)==1 and rejected_calls[0]["status"]=="UNKNOWN"
+    assert all(x["inflightCount"]==0 for x in c.call("GET",p+"/budgets"))
+    print("PASS: provider rejection is persisted once, uncertain usage retained, slot released")
+    # Only a CI-owned worker PID can be killed. Local smoke does not touch arbitrary processes.
+    worker_pid=os.environ.get("PEACHAGENT_TEST_WORKER_PID")
+    jar_path=os.environ.get("PEACHAGENT_TEST_WORKER_JAR")
+    if worker_pid and jar_path:
+        assert os.environ.get("GITHUB_ACTIONS")=="true", "Worker fault injection requires isolated GitHub Actions"
+        assert Path(jar_path).is_file()
+        crash=c.call("POST",w+"/models",{"providerId":providers["NONE"][0],"name":"Crash fixture",
+          "externalModelId":"crash","modelType":"LLM","protocolKey":model["protocolKey"],"protocolVersion":model["protocolVersion"],
+          "protocolOptions":{},"capabilities":{},"modelOptions":{},"pricing":{"currency":"USD","perRequest":0.01},"enabled":True,"rowVersion":None})
+        c.call("POST",p+"/model-bindings",{"modelId":crash["id"],"active":True})
+        before=len(REQUESTS)
+        lost=c.call("POST",p+"/models/"+crash["id"]+"/debug",concurrent_body,key=key())
+        deadline=time.monotonic()+15
+        while len(REQUESTS)==before and time.monotonic()<deadline:
+            time.sleep(.05)
+        assert len(REQUESTS)==before+1, "Crash fixture was not dispatched"
+        assert c.call("GET",p+"/runs/"+lost["id"])["status"]=="RUNNING"
+        # Kill the actual worker after the external dispatch was observed.
+        os.kill(int(worker_pid),signal.SIGKILL)
+        queued=c.call("POST",p+"/models/"+model["id"]+"/debug",concurrent_body,key=key())
+        assert queued["status"]=="QUEUED"
+        recovery_log=open("worker-recovery.log","w",encoding="utf-8")
+        recovery_worker=subprocess.Popen(["java","-jar",jar_path,"--spring.profiles.active=worker"],
+                                         stdout=recovery_log,stderr=subprocess.STDOUT)
+        ready=time.monotonic()+60
+        while time.monotonic()<ready:
+            assert recovery_worker.poll() is None,"Recovery worker exited"
+            if "Started PeachAgentApplication" in Path("worker-recovery.log").read_text(encoding="utf-8",errors="replace"):
+                break
+            time.sleep(.5)
+        else:
+            raise AssertionError("Recovery worker startup timeout")
+        wait(c,p,queued,"SUCCEEDED",timeout=70)
+        interrupted=wait(c,p,lost,"INTERRUPTED",timeout=70)
+        assert interrupted["errorCode"]=="WORKER_INTERRUPTED",interrupted
+        assert len(REQUESTS)==before+2,"A dispatched run was replayed or queued run was duplicated"
+        calls=[x for x in c.call("GET",p+"/usage?from=20000101000000&to=20990101000000") if x["runId"]==lost["id"]]
+        assert len(calls)==1 and calls[0]["status"]=="UNKNOWN"
+        assert all(x["inflightCount"]==0 for x in c.call("GET",p+"/budgets"))
+        assert "event: terminal" in event_text(c,p,lost)
+        print("PASS: worker SIGKILL after dispatch, queued run survives restart, expired lease interrupted, no replay, one uncertain ledger entry")
+    else:
+        print("NOT RUN: process fault injection requires the isolated CI worker PID and JAR")
     policy=c.call("GET",p+"/budgets")[-1]
     limit={k:policy.get(k) for k in ["maxCalls","maxTokens","maxCost","maxConcurrency","maxRunSeconds","maxRunTokens","maxRunCost","rowVersion"]}
     limit["maxCalls"]=0
@@ -214,4 +321,13 @@ try:
     assert len(REQUESTS)==before
     print("PASS: seven local protocol routes, six model types, credential vault, artifact access, Prompt versions, real SSE chat, idempotency, usage and budget rejection")
 finally:
+    if recovery_worker is not None:
+        recovery_worker.terminate()
+        try:
+            recovery_worker.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            recovery_worker.kill()
+            recovery_worker.wait(timeout=10)
+    if recovery_log is not None:
+        recovery_log.close()
     server.shutdown()
