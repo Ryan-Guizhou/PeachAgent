@@ -76,7 +76,6 @@ jobs:
           DB_PASSWORD: ci-only-db
           REDIS_PASSWORD: ci-only-redis
           COOKIE_SECURE: 'false'
-          LOGGING_LEVEL_COM_PEACHSOFT_PEACHAGENT_IAM_IAMERRORS: DEBUG
           PEACHAGENT_ALLOWED_INTERNAL_ORIGINS: http://127.0.0.1:18081
           PEACHAGENT_REDIS_SESSION_FILE: ${{ runner.temp }}/peachagent-redis-session.json
         run: |
@@ -84,7 +83,7 @@ jobs:
           export CREDENTIAL_KEK="$(openssl rand -base64 32)"
           echo "::add-mask::$CREDENTIAL_KEK"
           JAR=backend/peachagent-bootstrap/target/peachagent-bootstrap-1.0.0-SNAPSHOT.jar
-          java -jar "$JAR" --spring.profiles.active=api --logging.level.com.peachsoft.peachagent.iam.IamErrors=DEBUG > api.log 2>&1 &
+          java -jar "$JAR" --spring.profiles.active=api > api.log 2>&1 &
           API=$!
           WORKER=""
           trap 'kill "$API" ${WORKER:-} 2>/dev/null || true; test ! -f api.log || cat api.log; test ! -f api-restarted.log || cat api-restarted.log; test ! -f worker.log || cat worker.log' EXIT
@@ -103,7 +102,7 @@ jobs:
           echo "PASS: Redis rate-limit keys have an active expiry"
           kill "$API"
           wait "$API" || true
-          java -jar "$JAR" --spring.profiles.active=api --logging.level.com.peachsoft.peachagent.iam.IamErrors=DEBUG > api-restarted.log 2>&1 &
+          java -jar "$JAR" --spring.profiles.active=api > api-restarted.log 2>&1 &
           API=$!
           for i in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'; then break; fi
