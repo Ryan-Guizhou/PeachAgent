@@ -2,7 +2,7 @@
 
 [English](README_EN.md) | [产品需求](../requirements/PRD-PeachAgent.md) | [P1 技术方案](../technical/P1-TECHNICAL-DESIGN.md) | [前端启动](../frontend/README.md)
 
-P1 采用 JDK 21、Spring Boot 4.1.3、Maven 七模块及 MySQL 5.7.44 或 8.4 / Redis 7.4。API 提供鉴权、资源管理和 SSE；Worker 独立消费 MySQL 持久运行队列，调用模型并结算用量。前端为 Vue 3 + Vite。当前是开发环境，不是 P7 生产部署包；供应商真实调用及整期验收见 [#18](https://github.com/Ryan-Guizhou/PeachAgent/issues/18)。
+P1 采用 JDK 21、Spring Boot 4.1.3、Maven 七模块及 MySQL 5.7.44 或 8.4；Redis 默认 7.4，并兼容 Redis Server 3.0.7 / 3.2.12（RESP2 与密码认证）。API 提供鉴权、资源管理和 SSE；Worker 独立消费 MySQL 持久运行队列，调用模型并结算用量。前端为 Vue 3 + Vite。当前是开发环境，不是 P7 生产部署包；供应商真实调用及整期验收见 [#18](https://github.com/Ryan-Guizhou/PeachAgent/issues/18)。
 
 ## 1. 拓扑与前置条件
 
@@ -56,6 +56,8 @@ $rng.Dispose()
 | DB_URL | 必填；jdbc:mysql://127.0.0.1:3306/peachagent | JDBC URL；已有数据库需满足初始化契约 |
 | REDIS_HOST / REDIS_PORT | localhost / 6379 | Redis 地址 |
 | REDIS_PASSWORD | 空（应用）/ Compose 必填 | Sa-Token Session、限流；与 Compose 一致 |
+| REDIS_IMAGE | redis:7.4-alpine | 仅 Compose；可选 redis:3.0.7 或 redis:3.2.12 |
+| REDIS_DATA_VOLUME | peachagent_redis_data | Compose Redis 命名卷；切换 Redis 大版本时使用独立卷 |
 | SMTP_HOST / SMTP_PORT | smtp.qq.com / 465 | QQ 邮箱 SMTP |
 | SMTP_USER / SMTP_PASSWORD | 必填 | 完整 QQ 邮箱地址 / SMTP 授权码（非登录密码） |
 | SMTP_AUTH / SMTP_SSL / SMTP_TLS | true / true / false | SMTP 认证、隐式 SSL、STARTTLS；465 不启用 STARTTLS |
@@ -71,9 +73,17 @@ $rng.Dispose()
 | ADMIN_EMAIL / ADMIN_PASSWORD | admin-init 必填 | 正式环境可选首次管理员初始化；密码至少 12 字符 |
 | dev profile | 显式启用 | Flyway V4 初始化本地测试账号及资源，不能用于生产 |
 
+### Redis 兼容范围
+
+应用使用 standalone Redis、RESP2 和传统密码认证（AUTH），不配置 ACL 用户名、RESP3、Redis Sentinel 或 Cluster。CI 对 Redis Server 3.0.7、3.2.12 和 7.4 执行真实 API/Worker、Sa-Token Session、限流 Lua 与过期验证；Compose 默认仍为 Redis 7.4。Redis 3.x 已停止维护且不提供原生 TLS，不建议作为公网生产服务；确需使用时应放在可信私有网络或 TLS 代理之后。
+
+Redis 7.x 的 RDB 快照不应直接交给旧版 Redis 3.x 复用。切换到 3.x 时，在 `.env` 设置 `REDIS_IMAGE=redis:3.2.12`（或 `redis:3.0.7`）并将 `REDIS_DATA_VOLUME` 改为独立名称，例如 `peachagent_redis3_data`，再执行 `docker compose --env-file .env -f compose.dev.yml up -d --wait --force-recreate redis`。原 Redis 7.x 数据卷会保留；新卷中的会话和限流计数为空，用户需重新登录。切回 7.x 时恢复原镜像和原卷名。外部 Redis 不受 `REDIS_IMAGE` 影响，只需配置 `REDIS_HOST`、`REDIS_PORT` 和 `REDIS_PASSWORD`。
+
 重要：新库使用 UTF8MB4 / UTF8MB4_UNICODE_CI，标识符要求 LOWER_CASE_TABLE_NAMES=1 或 2（Compose 固定 1）。不能在已有卷上直接修改该设置。已有 UTF8MB4 的不区分大小写排序规则仍允许，避免强制转换现有 8.4 数据。Flyway 自动识别 5.7 / 8.x：8.x 保留原始 V1 校验和；5.7 使用独立 V1、共享 V2 和 V3 等价触发器，保持原有 104 条 CHECK 的语义。不要关闭 Flyway 校验、自动 repair 或清库；已有失败迁移或跨版本迁移须备份后单独处理。5.7 已停止常规安全维护，生产推荐受支持的 8.x。外部 5.7 数据库需启用 InnoDB、DYNAMIC 行格式、足够的索引长度，并授予迁移账号 DDL、外键和 TRIGGER 权限（开启 binlog 时由 DBA 审核触发器创建权限）。Flyway V1 创建 25 张业务表；业务时间以 UTC CHAR(14) yyyyMMddHHmmss 存储。SQL 标识符、关键字大写，密钥及外部模型 ID 保持精确原值。
 
 ## 3. 启动中间件并构建
+
+默认使用 Redis 7.4。若要验证 Redis 3.x，先按上一节设置 `REDIS_IMAGE` 与独立 `REDIS_DATA_VOLUME`，不要将 Redis 7.x 数据卷挂载给旧版服务端。
 
 ```bash
 docker compose --env-file .env -f compose.dev.yml up -d --wait mysql redis
