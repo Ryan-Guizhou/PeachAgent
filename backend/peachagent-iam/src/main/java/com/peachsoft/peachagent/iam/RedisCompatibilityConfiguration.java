@@ -14,7 +14,7 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
  * 提供兼容 Redis 3.x 的 Sa-Token 会话存储实现。
  * @Author Mr Shu
  * @Version 1.0.0
- * @CreateTime 2026/11/25
+ * @CreateTime 2026/11/25 09:40
  */
 @Configuration
 public class RedisCompatibilityConfiguration {
