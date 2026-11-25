@@ -7,8 +7,6 @@ import java.sql.SQLException;
 import java.time.Clock;
 import java.util.Locale;
 
-import io.lettuce.core.protocol.ProtocolVersion;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationRunner;
@@ -19,6 +17,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.springframework.jdbc.core.JdbcTemplate;
+
+import io.lettuce.core.protocol.ProtocolVersion;
 
 /**
  * 启动时核对数据库初始化契约，拒绝在错误的数据库环境运行。
