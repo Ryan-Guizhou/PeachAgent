@@ -76,6 +76,9 @@ public class IamErrors {
                 "Unhandled request error traceId={} type={}",
                 trace,
                 error.getClass().getSimpleName());
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Unhandled request exception details traceId={}", trace, error);
+        }
         return ResponseEntity.internalServerError()
                 .body(Map.of("code", "INTERNAL_ERROR", "message", "Request failed", "traceId", trace));
     }
