@@ -75,7 +75,7 @@ $rng.Dispose()
 
 ### Redis 兼容范围
 
-应用使用 standalone Redis、RESP2 和传统密码认证（AUTH），不配置 ACL 用户名、RESP3、Redis Sentinel 或 Cluster。CI 对 Redis Server 3.0.7、3.2.12 和 7.4 执行真实 API/Worker、Sa-Token Session、限流 Lua 与过期验证；Compose 默认仍为 Redis 7.4。Redis 3.x 已停止维护且不提供原生 TLS，不建议作为公网生产服务；确需使用时应放在可信私有网络或 TLS 代理之后。
+应用使用 standalone Redis、RESP2 和传统密码认证（AUTH），不配置 ACL 用户名、RESP3、Redis Sentinel 或 Cluster。Sa-Token 1.46.0 默认使用 Redis 6.0 才支持的 `SET KEEPTTL`；项目通过自定义 `SaTokenDaoForRedisTemplate.update`，使用 Redis 3.x 已支持的 `PTTL` / `SET` / `PSETEX` Lua 脚本原子保留 Session TTL。CI 对 Redis Server 3.0.7、3.2.12 和 7.4 执行真实 API/Worker、Sa-Token Session、限流 Lua 与过期验证；Compose 默认仍为 Redis 7.4。Redis 3.x 已停止维护且不提供原生 TLS，不建议作为公网生产服务；确需使用时应放在可信私有网络或 TLS 代理之后。
 
 Redis 7.x 的 RDB 快照不应直接交给旧版 Redis 3.x 复用。切换到 3.x 时，在 `.env` 设置 `REDIS_IMAGE=redis:3.2.12`（或 `redis:3.0.7`）并将 `REDIS_DATA_VOLUME` 改为独立名称，例如 `peachagent_redis3_data`，再执行 `docker compose --env-file .env -f compose.dev.yml up -d --wait --force-recreate redis`。原 Redis 7.x 数据卷会保留；新卷中的会话和限流计数为空，用户需重新登录。切回 7.x 时恢复原镜像和原卷名。外部 Redis 不受 `REDIS_IMAGE` 影响，只需配置 `REDIS_HOST`、`REDIS_PORT` 和 `REDIS_PASSWORD`。
 
