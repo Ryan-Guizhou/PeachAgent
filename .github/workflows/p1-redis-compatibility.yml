@@ -1,0 +1,131 @@
+name: P1 Redis compatibility
+on:
+  pull_request:
+    paths:
+      - 'backend/peachagent-iam/**'
+      - 'backend/peachagent-bootstrap/**'
+      - 'backend/qa/iam-smoke.py'
+      - 'backend/qa/redis-session-smoke.py'
+      - 'compose.dev.yml'
+      - '.env.example'
+      - 'backend/README.md'
+      - 'backend/README_EN.md'
+      - 'technical/P1-TECHNICAL-DESIGN.md'
+      - '.github/workflows/p1-redis-compatibility.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  redis:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    strategy:
+      fail-fast: false
+      matrix:
+        redis: ['3.0.7', '3.2.12', '7.4-alpine']
+    env:
+      MYSQL_IMAGE: mysql:8.4
+      REDIS_IMAGE: redis:${{ matrix.redis }}
+      REDIS_DATA_VOLUME: peachagent_redis_compat_${{ matrix.redis }}
+      SMTP_HOST: 127.0.0.1
+      SMTP_PORT: '1025'
+      SMTP_AUTH: 'false'
+      SMTP_SSL: 'false'
+      SMTP_TLS: 'false'
+      MAIL_FROM: qa@example.invalid
+      PEACHAGENT_TEST_SMTP: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: backend/**/pom.xml
+      - name: Build backend
+        run: mvn -B -f backend/pom.xml -DskipTests package
+      - name: Start isolated SMTP fixture
+        run: |
+          python3 backend/qa/smtp-fixture.py > smtp-fixture.log 2>&1 &
+          python3 - <<'PY'
+          import socket, time, urllib.request
+          for _ in range(60):
+              try:
+                  with socket.create_connection(("127.0.0.1",1025),timeout=2) as smtp:
+                      assert smtp.recv(256).startswith(b"220")
+                  with urllib.request.urlopen("http://127.0.0.1:8025/api/v1/messages",timeout=2) as response:
+                      assert response.status==200
+                  break
+              except (OSError,AssertionError):
+                  time.sleep(1)
+          else:
+              raise RuntimeError("SMTP fixture readiness timeout")
+          PY
+      - name: Start MySQL and selected Redis server
+        env:
+          MYSQL_ROOT_PASSWORD: ci-only-root
+          DB_USER: peachagent
+          DB_PASSWORD: ci-only-db
+          REDIS_PASSWORD: ci-only-redis
+        run: docker compose -f compose.dev.yml up -d --wait mysql redis
+      - name: Verify Redis session, rate limit and API/Worker compatibility
+        env:
+          DB_URL: jdbc:mysql://127.0.0.1:3306/peachagent
+          DB_USER: peachagent
+          DB_PASSWORD: ci-only-db
+          REDIS_PASSWORD: ci-only-redis
+          COOKIE_SECURE: 'false'
+          PEACHAGENT_ALLOWED_INTERNAL_ORIGINS: http://127.0.0.1:18081
+          PEACHAGENT_REDIS_SESSION_FILE: ${{ runner.temp }}/peachagent-redis-session.json
+        run: |
+          set -euo pipefail
+          export CREDENTIAL_KEK="$(openssl rand -base64 32)"
+          echo "::add-mask::$CREDENTIAL_KEK"
+          JAR=backend/peachagent-bootstrap/target/peachagent-bootstrap-1.0.0-SNAPSHOT.jar
+          java -jar "$JAR" --spring.profiles.active=api > api.log 2>&1 &
+          API=$!
+          WORKER=""
+          trap 'kill "$API" ${WORKER:-} 2>/dev/null || true; test ! -f api.log || cat api.log; test ! -f api-restarted.log || cat api-restarted.log; test ! -f worker.log || cat worker.log' EXIT
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'; then break; fi
+            kill -0 "$API"
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'
+          python3 backend/qa/iam-smoke.py
+          KEYS="$(docker compose -f compose.dev.yml exec -T redis redis-cli -a "$REDIS_PASSWORD" --raw --scan --pattern 'peachagent:iam:challenge-email:*')"
+          RATE_KEY="$(printf '%s\n' "$KEYS" | head -n 1)"
+          test -n "$RATE_KEY"
+          TTL="$(docker compose -f compose.dev.yml exec -T redis redis-cli -a "$REDIS_PASSWORD" TTL "$RATE_KEY" 2>/dev/null | tr -d '\r')"
+          test "$TTL" -gt 0
+          echo "PASS: Redis rate-limit keys have an active expiry"
+          kill "$API"
+          wait "$API" || true
+          java -jar "$JAR" --spring.profiles.active=api > api-restarted.log 2>&1 &
+          API=$!
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'; then break; fi
+            kill -0 "$API"
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8080/actuator/health | grep -q '"status":"UP"'
+          python3 backend/qa/redis-session-smoke.py
+          java -jar "$JAR" --spring.profiles.active=worker > worker.log 2>&1 &
+          WORKER=$!
+          for i in $(seq 1 40); do
+            if grep -q 'Started PeachAgentApplication' worker.log; then break; fi
+            kill -0 "$WORKER"
+            sleep 1
+          done
+          grep -q 'Started PeachAgentApplication' worker.log
+          kill -0 "$WORKER"
+          docker compose -f compose.dev.yml exec -T redis redis-cli -a "$REDIS_PASSWORD" ping 2>/dev/null | grep -q PONG
+          echo "PASS: API and Worker run against the selected Redis server"
+      - name: Cleanup
+        if: always()
+        env:
+          MYSQL_ROOT_PASSWORD: ci-only-root
+          DB_USER: peachagent
+          DB_PASSWORD: ci-only-db
+          REDIS_PASSWORD: ci-only-redis
+        run: docker compose -f compose.dev.yml down -v || true
