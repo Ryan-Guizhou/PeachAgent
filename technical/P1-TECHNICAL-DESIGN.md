@@ -1,4 +1,4 @@
-# P1-Review-1.2｜基础工作台技术方案
+# P1-Review-1.3｜基础工作台技术方案
 
 **状态：已批准，主体实现已合入 main；整期验收尚未完成。** 定稿日期：2026-11-24。基线 main [404e3e5](https://github.com/Ryan-Guizhou/PeachAgent/commit/404e3e50438d4babd067570bd5e3ab3e79ca9d34)。依据 [PRD §6.4 P1.1–P1.5、§6.5–6.7、§7](https://github.com/Ryan-Guizhou/PeachAgent/blob/404e3e50438d4babd067570bd5e3ab3e79ca9d34/requirements/PRD-PeachAgent.md)、[技术基线](https://github.com/Ryan-Guizhou/PeachAgent/blob/404e3e50438d4babd067570bd5e3ab3e79ca9d34/technical/README.md)、[评审流程](https://github.com/Ryan-Guizhou/PeachAgent/blob/404e3e50438d4babd067570bd5e3ab3e79ca9d34/ci/README.md)。前置原型 #16/#17 已合并，离线与 Chrome smoke 通过；尚非真实服务端，复杂原型文案与人工视觉缺口不作为已验收生产能力。正式 P1 页面需按当期验收完成。
 
