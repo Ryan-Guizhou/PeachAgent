@@ -71,6 +71,7 @@ jobs:
       - name: Verify Redis session, rate limit and API/Worker compatibility
         env:
           DB_URL: jdbc:mysql://127.0.0.1:3306/peachagent
+          MYSQL_ROOT_PASSWORD: ci-only-root
           DB_USER: peachagent
           DB_PASSWORD: ci-only-db
           REDIS_PASSWORD: ci-only-redis
