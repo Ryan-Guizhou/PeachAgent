@@ -1,10 +1,10 @@
 """Real HTTP + SMTP + MySQL/Redis identity checks. Only ephemeral CI credentials."""
+from concurrent.futures import ThreadPoolExecutor
 import http.cookiejar
 import json
 import os
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor
 import urllib.error
 import urllib.request
 
