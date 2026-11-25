@@ -2,7 +2,7 @@
 
 [中文](README.md) | [PRD](../requirements/PRD-PeachAgent.md) | [P1 design](../technical/P1-TECHNICAL-DESIGN.md) | [Frontend](../frontend/README_EN.md)
 
-P1 uses JDK 21, Spring Boot 4.1.3, a seven-module Maven project, MySQL 5.7.44 or 8.4 and Redis 7.4. API serves identity, resources and SSE; an independent Worker consumes persistent MySQL runs, invokes models and settles usage. This is a development environment, not the P7 production deployment. See [#18](https://github.com/Ryan-Guizhou/PeachAgent/issues/18) for acceptance.
+P1 uses JDK 21, Spring Boot 4.1.3, a seven-module Maven project and MySQL 5.7.44 or 8.4. Redis 7.4 remains the default; Redis Server 3.0.7 and 3.2.12 are compatibility targets (RESP2 and password authentication). API serves identity, resources and SSE; an independent Worker consumes persistent MySQL runs, invokes models and settles usage. This is a development environment, not the P7 production deployment. See [#18](https://github.com/Ryan-Guizhou/PeachAgent/issues/18) for acceptance.
 
 ## 1. Prerequisites and topology
 
@@ -43,6 +43,8 @@ Persist and back up the key; API and Worker use the same key/version. Do not reg
 | DB_URL | Required; jdbc:mysql://127.0.0.1:3306/peachagent | JDBC URL |
 | REDIS_HOST / REDIS_PORT | localhost / 6379 | Redis address |
 | REDIS_PASSWORD | Empty in app; required by Compose | Session and rate limiting |
+| REDIS_IMAGE | redis:7.4-alpine | Compose only; may be set to redis:3.0.7 or redis:3.2.12 |
+| REDIS_DATA_VOLUME | peachagent_redis_data | Compose Redis volume; use a separate volume when switching Redis major versions |
 | SMTP_HOST / SMTP_PORT | smtp.qq.com / 465 | QQ SMTP for verification/reset |
 | SMTP_USER / SMTP_PASSWORD | Required | Full QQ email / SMTP authorization code, not login password |
 | SMTP_AUTH / SMTP_SSL / SMTP_TLS | true / true / false | Auth, implicit SSL, STARTTLS |
@@ -57,9 +59,17 @@ Persist and back up the key; API and Worker use the same key/version. Do not reg
 | PEACHAGENT_ARTIFACT_DIRECTORY | ./data/artifacts | Same private directory for API and Worker; use absolute path if working directories differ |
 | ADMIN_EMAIL / ADMIN_PASSWORD | Required by admin-init only | Optional first administrator for a non-dev database; at least 12-character password |
 
+### Redis compatibility
+
+The application uses standalone Redis, RESP2 and traditional password authentication (AUTH). It does not configure ACL usernames, RESP3, Redis Sentinel or Cluster. CI runs real API/Worker, Sa-Token session, Lua rate-limit and expiry checks against Redis Server 3.0.7, 3.2.12 and 7.4; Compose still defaults to Redis 7.4. Redis 3.x is end-of-life and has no native TLS. Do not expose it to untrusted networks; if legacy compatibility is required, keep it on a trusted private network or behind a TLS proxy.
+
+Do not reuse a Redis 7.x RDB volume with an older Redis 3.x server. To test 3.x, set `REDIS_IMAGE=redis:3.2.12` (or `redis:3.0.7`) in `.env` and change `REDIS_DATA_VOLUME` to a separate name such as `peachagent_redis3_data`, then run `docker compose --env-file .env -f compose.dev.yml up -d --wait --force-recreate redis`. The original Redis 7.x volume is retained; the new volume starts with empty sessions and rate counters, so users must sign in again. Restore the original image and volume name to switch back. For an external Redis server, `REDIS_IMAGE` is irrelevant; configure `REDIS_HOST`, `REDIS_PORT` and `REDIS_PASSWORD`.
+
 New databases use UTF8MB4 / UTF8MB4_UNICODE_CI. Case-insensitive identifiers require LOWER_CASE_TABLE_NAMES=1 or 2 (Compose uses 1). Never change this setting on an existing volume. Existing case-insensitive UTF8MB4 collations remain accepted. Flyway detects 5.7 / 8.x: 8.x retains its original V1 checksum; 5.7 uses a separate V1, shared V2, and V3 equivalent triggers to enforce all 104 original checks. Do not automatically repair, delete, or disable migration validation; back up and review failed/cross-version migrations separately. MySQL 5.7 is past regular security maintenance; prefer supported 8.x in production. External 5.7 needs InnoDB, DYNAMIC row format, sufficient index length, and DDL/foreign-key/TRIGGER privileges (review trigger privileges with the DBA when binlog is enabled). Flyway V1 creates 25 business tables. Business time is UTC CHAR(14) yyyyMMddHHmmss. SQL identifiers and keywords are uppercase; credentials and external model IDs retain exact case.
 
 ## 3. Start dependencies and build
+
+Redis 7.4 is the default. To verify Redis 3.x, set `REDIS_IMAGE` and a separate `REDIS_DATA_VOLUME` as described above; never mount a Redis 7.x data volume into an older server.
 
 ```bash
 docker compose --env-file .env -f compose.dev.yml up -d --wait mysql redis
