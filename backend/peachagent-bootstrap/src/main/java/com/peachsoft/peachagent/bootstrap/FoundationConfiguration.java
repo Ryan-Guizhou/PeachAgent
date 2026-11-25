@@ -3,11 +3,11 @@ package com.peachsoft.peachagent.bootstrap;
 import com.peachsoft.peachagent.common.IdGenerator;
 import com.peachsoft.peachagent.common.UuidV7Generator;
 
-import io.lettuce.core.protocol.ProtocolVersion;
-
 import java.sql.SQLException;
 import java.time.Clock;
 import java.util.Locale;
+
+import io.lettuce.core.protocol.ProtocolVersion;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
