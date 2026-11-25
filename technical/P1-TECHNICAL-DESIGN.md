@@ -9,6 +9,7 @@
 | 1.0 | 初始评审方案，未获开工授权。 |
 | 1.1 | 2026-11-24 用户反馈：认可技术基座、服务架构、资源归属、数据库、模型范围、安全与计量、研发流程；补充要求“时间统一用字符串，模型协议定义应该要预留接口 后续肯定是需要兼容大部分的模型协议的”。用户明确暂不开始开发。本次仅修订时间字段与模型协议扩展契约及其相应字段、接口、验收，不改变本期业务范围和表数量。 |
 | 1.2 | 2026-11-24 用户明确要求：时间字段统一为年月日时分秒字符串、SQL 全部大写、数据库大小写不敏感；定稿技术文档和 SQL 后直接按需求及 UI 完成 P1。该指令构成本期开发授权，不批准 P2–P7。 |
+| 1.3 | 2026-11-25 用户要求兼容 Redis 3.x；明确 Redis Server 3.0.7 / 3.2.12 的 standalone RESP2 + 密码认证兼容基线，Redis 7.4 继续作为默认版本，并补充真实服务端 CI。该修订不增加 P1 业务范围。 |
 
 ## 1. 目标与范围
 
@@ -28,7 +29,9 @@
 
 建议模块化应用、API 和 Worker 双角色运行，同一 Maven 工程和发行镜像。API 负责鉴权、管理、任务受理和事件订阅；Worker 负责租约、实际模型请求、计量、事件与结果。P1 不部署 Nacos、独立网关、MQ、向量库、K8s。MySQL 是权威事实，Redis 只负责 Sa-Token、限流、缓存/可选唤醒；不能以 Redis 计数替代账本。
 
-- JDK 21 LTS 安全补丁、Maven（当前 CI 使用 Maven，Wrapper 待补）；Spring Boot 4.1.3、Spring AI 2.0.3、Sa-Token 1.46.0 Boot4 starter、MyBatis-Plus 3.5.18 Boot4 starter、MySQL 5.7.44（兼容）/ 8.4 LTS、Redis 稳定受支持版、Flyway；Vue 3/TypeScript/Vite/Pinia/Vue Router/i18n。API Spring MVC + SSE；模型适配器使用有界 HTTP/流式客户端，JDBC 在阻塞执行器/虚拟线程中执行，不阻塞 Reactor event loop。Micrometer/Actuator/OTel，结构化日志只记 ID 和错误码。
+Redis 兼容契约：应用使用 standalone Redis、RESP2 与传统密码认证 AUTH；Sa-Token Redis Template 使用基础 Session/Key 操作，账号限流脚本只调用 Redis 2.6 已支持的 INCR 与 EXPIRE。CI 真实验证 Redis Server 3.0.7、3.2.12 和 7.4。Redis 3.x 已停止维护，不具备 ACL 用户、RESP3 和原生 TLS；当前应用也未配置 Sentinel/Cluster。Redis 7.4 仍为 Compose 默认，切换旧版服务端必须使用独立数据卷，避免旧服务端读取新版 RDB 快照。
+
+- JDK 21 LTS 安全补丁、Maven（当前 CI 使用 Maven，Wrapper 待补）；Spring Boot 4.1.3、Spring AI 2.0.3、Sa-Token 1.46.0 Boot4 starter、MyBatis-Plus 3.5.18 Boot4 starter、MySQL 5.7.44（兼容）/ 8.4 LTS、Redis Server 3.0.7 / 3.2.12 兼容（RESP2 + AUTH，7.4 为默认）、Flyway；Vue 3/TypeScript/Vite/Pinia/Vue Router/i18n。API Spring MVC + SSE；模型适配器使用有界 HTTP/流式客户端，JDBC 在阻塞执行器/虚拟线程中执行，不阻塞 Reactor event loop。Micrometer/Actuator/OTel，结构化日志只记 ID 和错误码。
 - Boot 3.5.16 为最后 OSS 发布（[官方](https://spring.io/blog/2026/06/25/spring-boot-3-5-16-available-now/)）；Boot 4.1.3 为已发布维护版本（[官方版本目录](https://docs.spring.io/spring-boot/)），AI 2.0.3 已发布且包含近期安全修复（[官方](https://spring.io/blog/2026/11/20/spring-ai-2-1-0-GA-available-now/)）。Spring AI 2.0 兼容 Boot 4.0/4.1（[官方](https://spring.io/blog/2026/06/12/spring-ai-2-0-0-GA-available-now/)）。MyBatis-Plus 支持 Boot4（[官方](https://baomidou.com/getting-started/install/)）；Sa-Token Boot4 支持（[官方](https://github.com/dromara/Sa-Token/blob/dev/sa-token-doc-new/docs/start/download.md)）。SAA 已核查的 1.1.2.2 使用 Boot3.5，2.0 milestone 不作为 P1 生产依赖（[发行记录](https://github.com/alibaba/spring-ai-alibaba/releases)）。本期不引入 SAA Agent Graph；P2/P3 各自复审稳定兼容版本。若用户坚持 Boot3/SAA1.x，需明确维护风险并另审。完整依赖组合尚未编译，批准后先 BOM/锁文件、dependency tree、CVE 扫描、启动及调用验证；不通过则提出差异重新评审，不静默降级。 
 - 工程建议：`backend/peachagent-common`（错误、ID、统一 TimeCodec/Clock、scope、审计接口）、`peachagent-iam`、`peachagent-studio`（项目服务由 IAM 维护归属，Studio 维护 Prompt/Chat/插件声明）、`peachagent-model`（模型注册表、凭证、Protocol SPI、受控传输）、`peachagent-runtime`（Run/事件/模型执行）、`peachagent-metering`（预算和账本查询）、`peachagent-bootstrap`（api/worker profile、迁移、装配）；`frontend/`。模块不循环依赖，禁止其他模块直接操作 IAM/凭证表或绕过 Runtime 调模型。数据库初始化一次、Flyway 迁移由 API/专门迁移任务执行，Worker 在 schema ready 后启动。
 - SPI 只定义当期 ModelProtocolAdapter、ModelProtocolRegistry、CredentialResolver、RunDispatcher、RunEventPublisher、UsageRecorder、BlobStore、PluginManifestValidator 的输入输出/错误/能力。ModelProtocolAdapter 取代初稿 ModelAdapter 命名，不并列建立两套适配器 SPI。Spring AI SDK 对象不进入领域模型、DB JSON 或前端接口；不启用自动工具执行、隐式 SDK 重试和隐式模型 fallback。协议由受信代码 Bean/SPI 注册，配置动态更新，非任意脚本执行。缓存按 tenant/space/provider revision/model revision/credential revision/protocol key/version/adapter key/version 隔离、限量与过期，调用前读当前状态；撤权/换密失效旧缓存，旧客户端在途完成后回收。
