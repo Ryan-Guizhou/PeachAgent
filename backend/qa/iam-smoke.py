@@ -1,8 +1,10 @@
 """Real HTTP + SMTP + MySQL/Redis identity checks. Only ephemeral CI credentials."""
 import http.cookiejar
 import json
+import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 import urllib.error
 import urllib.request
 
@@ -79,6 +81,30 @@ a.call("POST", "/auth/login", {"email":"p1-a@example.invalid","password":"CI-onl
 new_login=a.call("POST","/auth/login",{"email":"p1-a@example.invalid","password":"CI-only-reset-passphrase-456","remember":False})
 a.csrf=new_login["csrfToken"]
 a.call("GET","/admin/users",expected=403)
-a.call("POST", "/auth/logout", {}, 204)
-a.call("GET", "/auth/me", expected=401)
-print("PASS: SMTP registration, one-time challenge, real cookie session, two tenants, workspace/project isolation, CSRF, optimistic lock, archive, password recovery and logout")
+b.call("POST", "/auth/logout", {}, 204)
+b.call("GET", "/auth/me", expected=401)
+
+def challenge_status(_):
+    request = urllib.request.Request(
+        BASE + "/api/v1/auth/email-challenges",
+        method="POST",
+        data=json.dumps({"email": "p1-rate-limit@example.invalid", "purpose": "REGISTER"}).encode(),
+        headers={"Origin": ORIGIN, "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            return response.status
+    except urllib.error.HTTPError as error:
+        return error.code
+
+with ThreadPoolExecutor(max_workers=3) as pool:
+    statuses = sorted(pool.map(challenge_status, range(3)))
+assert statuses == [202, 202, 429], statuses
+
+session_file = os.environ.get("PEACHAGENT_REDIS_SESSION_FILE")
+if session_file:
+    cookie = next((item for item in a.jar if item.name == "PA_SESSION"), None)
+    assert cookie is not None, "Redis-backed session cookie was not issued"
+    with open(session_file, "w", encoding="utf-8") as output:
+        json.dump({"cookie": cookie.name + "=" + cookie.value, "csrfToken": a.csrf}, output)
+
+print("PASS: SMTP registration, one-time challenge, real cookie session, two tenants, workspace/project isolation, CSRF, optimistic lock, archive, password recovery, logout and atomic Redis rate limiting")
