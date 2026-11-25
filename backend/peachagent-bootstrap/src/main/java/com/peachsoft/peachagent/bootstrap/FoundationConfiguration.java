@@ -3,6 +3,8 @@ package com.peachsoft.peachagent.bootstrap;
 import com.peachsoft.peachagent.common.IdGenerator;
 import com.peachsoft.peachagent.common.UuidV7Generator;
 
+import io.lettuce.core.protocol.ProtocolVersion;
+
 import java.sql.SQLException;
 import java.time.Clock;
 import java.util.Locale;
@@ -10,6 +12,7 @@ import java.util.Locale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.data.redis.autoconfigure.LettuceClientOptionsBuilderCustomizer;
 import org.springframework.boot.flyway.autoconfigure.FlywayConfigurationCustomizer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -26,6 +29,16 @@ import org.springframework.jdbc.core.JdbcTemplate;
 @Configuration
 public class FoundationConfiguration {
     private static final Logger log = LoggerFactory.getLogger(FoundationConfiguration.class);
+
+    /**
+     * 固定 Redis RESP2，避免 Lettuce 默认协议协商发送 Redis 3.x 不支持的 HELLO 命令。
+     *
+     * @return Lettuce 客户端协议配置器
+     */
+    @Bean
+    LettuceClientOptionsBuilderCustomizer redisProtocolOptions() {
+        return builder -> builder.protocolVersion(ProtocolVersion.RESP2);
+    }
 
     @Bean
     Clock clock() {
