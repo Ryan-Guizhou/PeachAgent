@@ -9,7 +9,7 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Component;
 
 /**
- * 原子计数及过期，Redis 异常时不放行敏感请求。
+ * 使用 Redis 2.6 起提供的 INCR 与 EXPIRE 保证限流原子性，兼容 Redis 3.x RESP2；Redis 异常时不放行敏感请求。
  * @Author Mr Shu
  * @Version 1.0.0
  * @CreateTime 2026/11/24 11:29
