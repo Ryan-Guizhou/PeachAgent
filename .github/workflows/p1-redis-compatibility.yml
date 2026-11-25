@@ -76,6 +76,7 @@ jobs:
           DB_PASSWORD: ci-only-db
           REDIS_PASSWORD: ci-only-redis
           COOKIE_SECURE: 'false'
+          LOGGING_LEVEL_COM_PEACHSOFT_PEACHAGENT_IAM_IAMERRORS: DEBUG
           PEACHAGENT_ALLOWED_INTERNAL_ORIGINS: http://127.0.0.1:18081
           PEACHAGENT_REDIS_SESSION_FILE: ${{ runner.temp }}/peachagent-redis-session.json
         run: |
